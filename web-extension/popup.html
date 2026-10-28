@@ -1,0 +1,153 @@
+<!doctype html>
+<html lang="de">
+  <head>
+    <meta charset="UTF-8" />
+    <style>
+      :root { color-scheme: dark; }
+      * { box-sizing: border-box; margin: 0; padding: 0; }
+      body {
+        width: 380px;
+        max-height: 560px;
+        display: flex;
+        flex-direction: column;
+        background: #0a0b0d;
+        color: #e5e5e5;
+        font-family: "Inter", "Segoe UI", system-ui, sans-serif;
+        font-size: 13px;
+      }
+      header {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 10px 12px;
+        border-bottom: 1px solid #26282e;
+      }
+      header .logo { display: grid; place-items: center; }
+      header .title { font-weight: 600; font-size: 13px; letter-spacing: -0.01em; }
+      header .sub { font-size: 10.5px; color: #525252; }
+      header .spacer { flex: 1; }
+      .count {
+        font-size: 10px;
+        font-variant-numeric: tabular-nums;
+        color: #a3a3a3;
+        background: #1b1d21;
+        border: 1px solid #26282e;
+        border-radius: 999px;
+        padding: 2px 8px;
+      }
+      .clear {
+        background: none; border: 1px solid #26282e; color: #737373;
+        border-radius: 6px; padding: 3px 8px; font-size: 11px; cursor: pointer;
+        transition: all .14s ease;
+      }
+      .clear:hover { color: #e5e5e5; border-color: #3a3d44; }
+      .toolbar { padding: 8px 12px 6px; }
+      .toolbar input {
+        width: 100%;
+        height: 30px;
+        background: #101214;
+        border: 1px solid #26282e;
+        border-radius: 7px;
+        color: #e5e5e5;
+        padding: 0 10px;
+        font-size: 12.5px;
+        outline: none;
+      }
+      .toolbar input:focus { border-color: #0d9488; }
+      .hint {
+        padding: 0 12px 6px;
+        font-size: 10px;
+        color: #525252;
+      }
+      .list { flex: 1; overflow-y: auto; padding: 0 10px 10px; display: flex; flex-direction: column; gap: 6px; }
+      .list::-webkit-scrollbar { width: 7px; }
+      .list::-webkit-scrollbar-thumb { background: #26282e; border-radius: 8px; }
+      .item {
+        border: 1px solid #26282e;
+        background: rgba(18,19,22,.6);
+        border-radius: 8px;
+        padding: 7px 9px;
+        cursor: pointer;
+        transition: border-color .14s ease, background .14s ease;
+        position: relative;
+      }
+      .item:hover { border-color: #134e4a; background: rgba(20,21,25,.85); }
+      .item.copied { border-color: #0d9488; }
+      .item .meta {
+        display: flex; align-items: center; gap: 6px;
+        font-size: 9.5px; color: #525252; font-variant-numeric: tabular-nums;
+        margin-bottom: 3px;
+      }
+      .item .meta .tag {
+        color: #2dd4bf;
+        border: 1px solid #134e4a;
+        border-radius: 4px;
+        padding: 0 4px;
+        font-size: 8.5px;
+        text-transform: uppercase;
+        letter-spacing: .06em;
+      }
+      .item .body {
+        font-family: "JetBrains Mono", "Cascadia Code", monospace;
+        font-size: 11px;
+        color: #d4d4d4;
+        overflow: hidden;
+        display: -webkit-box;
+        -webkit-line-clamp: 3;
+        -webkit-box-orient: vertical;
+        word-break: break-all;
+      }
+      .item .body.url { color: #5eead4; -webkit-line-clamp: 1; }
+      .item .check {
+        position: absolute; top: 6px; right: 8px;
+        color: #2dd4bf; font-size: 11px; opacity: 0;
+        transition: opacity .2s ease;
+      }
+      .item.copied .check { opacity: 1; }
+      .empty {
+        text-align: center; color: #525252; padding: 32px 20px;
+      }
+      .empty .big { font-size: 12px; color: #737373; margin-bottom: 4px; }
+      footer {
+        border-top: 1px solid #26282e;
+        padding: 6px 12px;
+        font-size: 9.5px;
+        color: #404040;
+        display: flex; justify-content: space-between;
+      }
+    </style>
+  </head>
+  <body>
+    <header>
+      <span class="logo">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
+          <rect x="3" y="14.5" width="18" height="4" rx="1.4" fill="#134e4a"/>
+          <rect x="3" y="8.75" width="18" height="4" rx="1.4" fill="#0f766e"/>
+          <rect x="3" y="3" width="13.5" height="4" rx="1.4" fill="#14b8a6"/>
+          <path d="M20.2 3.6 22 5.4l-2.9 2.9-1.8-1.8z" fill="#5eead4"/>
+        </svg>
+      </span>
+      <div>
+        <div class="title">copyNpaste</div>
+        <div class="sub">Browser-Magazin</div>
+      </div>
+      <div class="spacer"></div>
+      <span class="count" id="count">0 / 25</span>
+      <button class="clear" id="clear" title="Magazin leeren">Leeren</button>
+    </header>
+
+    <div class="toolbar">
+      <input id="search" type="text" placeholder="Magazin durchsuchen … Enter = ersten Treffer kopieren" autocomplete="off" spellcheck="false" />
+    </div>
+    <div class="hint" id="hint">Kopiere etwas (Strg+C) und öffne das Add-on — der Inhalt landet automatisch oben im Magazin. Klick auf ein Element kopiert es zurück.</div>
+
+    <div class="list" id="list"></div>
+
+    <footer>
+      <span>Desktop-App: Alt+V Reverse-Paste · Pins · Smart-Bridge</span>
+      <span>v1.1.0</span>
+    </footer>
+
+    <script src="popup.js"></script>
+  </body>
+</html>

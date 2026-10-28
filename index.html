@@ -1,0 +1,152 @@
+<!doctype html>
+<html lang="de">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; img-src 'self' data:; style-src 'self' 'unsafe-inline'; font-src 'self'; connect-src ipc: http://ipc.localhost" />
+    <title>copyNpaste</title>
+    <script type="module" src="/src/main.ts"></script>
+  </head>
+  <body>
+    <div id="app" class="app-shell flex h-screen flex-col overflow-hidden select-none">
+      <!-- ═══════════ Titelzeile (custom, ohne OS-Dekoration) ═══════════ -->
+      <header id="titlebar" data-tauri-drag-region class="flex h-12 shrink-0 items-center gap-3 border-b border-neutral-800/70 px-4">
+        <div class="flex items-center gap-2.5" data-tauri-drag-region>
+          <span id="brand-logo" class="grid size-6 place-items-center"></span>
+          <div class="flex items-baseline gap-2" data-tauri-drag-region>
+            <span class="text-[13px] font-semibold tracking-tight text-neutral-100">copyNpaste</span>
+            <span class="text-[11px] text-neutral-500">Clipboard-Magazin</span>
+          </div>
+        </div>
+        <div class="flex-1" data-tauri-drag-region></div>
+        <div id="bridge-status" class="mr-1 flex items-center gap-1.5 text-[11px] text-neutral-500" title="Smart-Bridge — Today's Hunt">
+          <span id="bridge-dot" class="size-1.5 rounded-full bg-neutral-700 transition-colors duration-300"></span>
+          <span id="bridge-label">Bridge bereit</span>
+        </div>
+        <button id="btn-settings" class="icon-btn" title="Einstellungen" aria-label="Einstellungen"></button>
+        <button id="btn-minimize" class="icon-btn" title="Minimieren" aria-label="Minimieren"></button>
+        <button id="btn-close" class="icon-btn hover:!bg-red-500/10 hover:!text-red-400" title="Schließen (läuft im Tray weiter)" aria-label="Schließen"></button>
+      </header>
+
+      <!-- ═══════════ Werkzeugleiste ═══════════ -->
+      <div id="toolbar" class="flex h-12 shrink-0 items-center gap-3 border-b border-neutral-800/70 px-4">
+        <div class="relative w-72">
+          <span id="search-icon" class="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-neutral-600"></span>
+          <input
+            id="search"
+            type="text"
+            placeholder="Magazin durchsuchen …"
+            class="h-8 w-full rounded-md border border-neutral-800 bg-neutral-900/50 pl-8 pr-3 text-[13px] text-neutral-200 placeholder-neutral-600 outline-none transition-colors focus:border-teal-700 focus:bg-neutral-900"
+            autocomplete="off"
+            spellcheck="false"
+          />
+        </div>
+        <div class="flex-1"></div>
+        <div class="flex items-center gap-2 rounded-md border border-neutral-800 bg-neutral-900/40 px-2.5 py-1 text-[11px] text-neutral-400" title="Reverse-Paste: fügt die Magazin-Spitze ein und entfernt sie">
+          <kbd class="rounded border border-neutral-700 bg-neutral-800 px-1.5 py-px font-mono text-[10px] text-neutral-300">Alt</kbd>
+          <span class="text-neutral-600">+</span>
+          <kbd class="rounded border border-neutral-700 bg-neutral-800 px-1.5 py-px font-mono text-[10px] text-neutral-300">V</kbd>
+          <span>fügt die Spitze ein</span>
+        </div>
+        <div id="fill-meter" class="flex items-center gap-2 text-[11px] tabular-nums text-neutral-500">
+          <div class="h-1 w-24 overflow-hidden rounded-full bg-neutral-800">
+            <div id="fill-bar" class="h-full rounded-full bg-teal-600 transition-all duration-300" style="width: 0%"></div>
+          </div>
+          <span id="fill-label">0 / 25</span>
+        </div>
+        <button id="btn-clear" class="ghost-btn" title="Magazin leeren">Leeren</button>
+      </div>
+
+      <!-- ═══════════ Zwei-Spalten-Magazin ═══════════ -->
+      <main class="grid min-h-0 flex-1 grid-cols-1 gap-px bg-neutral-800/40 md:grid-cols-2">
+        <section class="flex min-h-0 flex-col bg-[#0b0c0e]">
+          <div class="flex shrink-0 items-center gap-2 px-4 pb-2 pt-3">
+            <span id="col-icon-text" class="text-neutral-500"></span>
+            <h2 class="text-[11px] font-medium uppercase tracking-[0.14em] text-neutral-500">Text &amp; Code</h2>
+            <span id="count-text" class="rounded-full bg-neutral-800/80 px-1.5 py-px text-[10px] tabular-nums text-neutral-400">0</span>
+            <div class="flex-1"></div>
+            <span class="text-[10px] text-neutral-700">Klick / Enter = einfügen · Entf = entfernen</span>
+          </div>
+          <div id="list-text" class="cnp-scroll min-h-0 flex-1 space-y-2 overflow-y-auto px-3 pb-4 pt-1"></div>
+        </section>
+
+        <section class="flex min-h-0 flex-col bg-[#0b0c0e]">
+          <div class="flex shrink-0 items-center gap-2 px-4 pb-2 pt-3">
+            <span id="col-icon-media" class="text-neutral-500"></span>
+            <h2 class="text-[11px] font-medium uppercase tracking-[0.14em] text-neutral-500">Bilder &amp; Dateien</h2>
+            <span id="count-media" class="rounded-full bg-neutral-800/80 px-1.5 py-px text-[10px] tabular-nums text-neutral-400">0</span>
+            <div class="flex-1"></div>
+            <span class="text-[10px] text-neutral-700">Zielfeld erkennt Format automatisch</span>
+          </div>
+          <div id="list-media" class="cnp-scroll min-h-0 flex-1 space-y-2 overflow-y-auto px-3 pb-4 pt-1"></div>
+        </section>
+      </main>
+    </div>
+
+    <!-- ═══════════ Einstellungen ═══════════ -->
+    <div id="settings-overlay" class="fixed inset-0 z-50 hidden items-center justify-center bg-black/60 backdrop-blur-sm">
+      <div class="cnp-scroll max-h-[80vh] w-[560px] overflow-y-auto rounded-xl border border-neutral-800 bg-[#0d0e11] shadow-2xl shadow-black/60">
+        <div class="flex items-center justify-between border-b border-neutral-800/80 px-5 py-3.5">
+          <h3 class="text-[13px] font-semibold text-neutral-100">Einstellungen</h3>
+          <button id="btn-settings-close" class="icon-btn" title="Schließen" aria-label="Schließen"></button>
+        </div>
+        <div class="space-y-5 px-5 py-4">
+          <div class="grid grid-cols-2 gap-4">
+            <label class="field">
+              <span>Magazin-Kapazität</span>
+              <input id="set-capacity" type="number" min="10" max="100" step="1" />
+              <small>10 – 100 Plätze · älteste fallen zuerst</small>
+            </label>
+            <label class="field">
+              <span>Reverse-Paste-Shortcut</span>
+              <input id="set-paste-sc" type="text" placeholder="alt+v" spellcheck="false" />
+              <small>Z. B. alt+v, ctrl+shift+v, cmd+alt+v</small>
+            </label>
+          </div>
+          <div class="grid grid-cols-2 gap-4">
+            <label class="field">
+              <span>Magazin-Fenster-Shortcut</span>
+              <input id="set-toggle-sc" type="text" placeholder="alt+shift+v" spellcheck="false" />
+              <small>Zeigt / versteckt dieses Fenster</small>
+            </label>
+            <label class="field">
+              <span>Fenster-Effekte</span>
+              <div class="flex h-[34px] items-center gap-2">
+                <input id="set-effects" type="checkbox" class="cnp-check" />
+                <span class="text-[12px] text-neutral-400">Durchscheinender Hintergrund (backdrop-blur)</span>
+              </div>
+              <small>Bei Darstellungsproblemen abschalten</small>
+            </label>
+          </div>
+
+          <div class="rounded-lg border border-neutral-800 bg-neutral-900/30 p-4">
+            <div class="mb-3 flex items-center justify-between">
+              <div>
+                <div class="text-[13px] font-medium text-neutral-200">Localhost-Smart-Bridge</div>
+                <div class="text-[11px] text-neutral-500">URLs automatisch an „Today's Hunt" (Bookmarks Dynamic Manager) melden</div>
+              </div>
+              <label class="flex cursor-pointer items-center gap-2">
+                <input id="set-bridge-on" type="checkbox" class="cnp-check" />
+                <span class="text-[12px] text-neutral-400">Aktiv</span>
+              </label>
+            </div>
+            <label class="field">
+              <span>Webhook-Endpunkt</span>
+              <input id="set-bridge-url" type="text" placeholder="http://127.0.0.1:9911/api/todays-hunt" spellcheck="false" />
+              <div class="flex items-center gap-2">
+                <button id="btn-test-bridge" class="ghost-btn mt-2">Endpunkt testen</button>
+                <span id="bridge-test-result" class="mt-2 text-[11px] text-neutral-500"></span>
+              </div>
+            </label>
+          </div>
+
+          <p id="settings-error" class="hidden rounded-md border border-red-900/60 bg-red-950/40 px-3 py-2 text-[12px] text-red-300"></p>
+        </div>
+        <div class="flex justify-end gap-2 border-t border-neutral-800/80 px-5 py-3.5">
+          <button id="btn-settings-cancel" class="ghost-btn">Abbrechen</button>
+          <button id="btn-settings-save" class="primary-btn">Speichern</button>
+        </div>
+      </div>
+    </div>
+  </body>
+</html>

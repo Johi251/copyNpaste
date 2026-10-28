@@ -1,0 +1,246 @@
+@import "tailwindcss";
+
+@theme {
+  --font-sans: "Inter Variable", ui-sans-serif, system-ui, -apple-system, sans-serif;
+  --font-mono: "JetBrains Mono Variable", ui-monospace, "Cascadia Code", monospace;
+}
+
+/* ─── Fensteroberfläche: dunkles Glas (transparente Tauri-Fenster) ─── */
+body {
+  background: transparent;
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+  color-scheme: dark;
+}
+
+.app-shell {
+  background: rgb(10 11 13 / 0.86);
+  backdrop-filter: blur(28px) saturate(1.35);
+  -webkit-backdrop-filter: blur(28px) saturate(1.35);
+}
+
+/* Effekte deaktiviert (Konfiguration): solider, trotzdem edler Grund */
+body.no-effects .app-shell {
+  background: #0a0b0d;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+}
+
+/* ─── Feine Scrollbars (Raycast-artig) ─── */
+.cnp-scroll {
+  scrollbar-width: thin;
+  scrollbar-color: #2a2d33 transparent;
+}
+.cnp-scroll::-webkit-scrollbar {
+  width: 8px;
+}
+.cnp-scroll::-webkit-scrollbar-thumb {
+  background: #26282e;
+  border-radius: 8px;
+  border: 2px solid transparent;
+  background-clip: content-box;
+}
+.cnp-scroll::-webkit-scrollbar-thumb:hover {
+  background: #34373e;
+  background-clip: content-box;
+}
+.cnp-scroll::-webkit-scrollbar-corner {
+  background: transparent;
+}
+
+/* ─── Buttons ─── */
+.icon-btn {
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 6px;
+  color: #737373;
+  transition: all 140ms ease;
+  cursor: pointer;
+}
+.icon-btn:hover {
+  background: rgb(255 255 255 / 0.06);
+  color: #e5e5e5;
+}
+.icon-btn svg {
+  width: 15px;
+  height: 15px;
+}
+
+.ghost-btn {
+  height: 30px;
+  padding: 0 12px;
+  border-radius: 6px;
+  border: 1px solid #26282e;
+  font-size: 12px;
+  color: #a3a3a3;
+  background: transparent;
+  transition: all 140ms ease;
+  cursor: pointer;
+}
+.ghost-btn:hover {
+  border-color: #3a3d44;
+  color: #e5e5e5;
+  background: rgb(255 255 255 / 0.03);
+}
+
+.primary-btn {
+  height: 30px;
+  padding: 0 14px;
+  border-radius: 6px;
+  background: #0d9488;
+  font-size: 12px;
+  font-weight: 500;
+  color: #ecfdf5;
+  transition: all 140ms ease;
+  cursor: pointer;
+}
+.primary-btn:hover {
+  background: #0f766e;
+}
+.primary-btn:active {
+  transform: translateY(0.5px);
+}
+
+/* ─── Einstellungen: Felder ─── */
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+.field > span {
+  font-size: 12px;
+  font-weight: 500;
+  color: #d4d4d4;
+}
+.field > small {
+  font-size: 10.5px;
+  line-height: 1.35;
+  color: #525252;
+}
+.field input[type="number"],
+.field input[type="text"] {
+  height: 34px;
+  border-radius: 7px;
+  border: 1px solid #26282e;
+  background: rgb(14 15 18 / 0.8);
+  padding: 0 11px;
+  font-size: 13px;
+  color: #e5e5e5;
+  outline: none;
+  transition: border-color 140ms ease;
+}
+.field input:focus {
+  border-color: #0d9488;
+}
+.cnp-check {
+  width: 15px;
+  height: 15px;
+  accent-color: #0d9488;
+  cursor: pointer;
+}
+
+/* ─── Magazin-Karten ─── */
+.cnp-card {
+  position: relative;
+  border: 1px solid rgb(38 40 46 / 0.9);
+  background: rgb(18 19 22 / 0.55);
+  border-radius: 9px;
+  padding: 10px 12px;
+  cursor: pointer;
+  transition: border-color 140ms ease, background 140ms ease, transform 140ms ease;
+  outline: none;
+}
+.cnp-card:hover {
+  border-color: #134e4a;
+  background: rgb(20 21 25 / 0.8);
+}
+.cnp-card:focus-visible {
+  border-color: #0d9488;
+  box-shadow: 0 0 0 1px #0d948866;
+}
+.cnp-card.is-next {
+  border-color: #115e59;
+  background: linear-gradient(180deg, rgb(13 148 136 / 0.07), rgb(18 19 22 / 0.55));
+}
+.cnp-card.is-next:hover {
+  border-color: #0d9488;
+}
+.cnp-card.is-pinned {
+  border-left: 2px solid #0f766e;
+}
+
+.card-actions {
+  opacity: 0;
+  transition: opacity 140ms ease;
+}
+.cnp-card:hover .card-actions,
+.cnp-card:focus-visible .card-actions {
+  opacity: 1;
+}
+
+/* ─── Die Haken-Animation (Lottie-inspiriert, ~250 ms Strichzeichnung) ───
+   Wird direkt unter dem Anfang der kopierten URL gezeichnet. */
+.check-under-link {
+  pointer-events: none;
+}
+.check-under-link path {
+  stroke-dasharray: 22;
+  stroke-dashoffset: 22;
+  fill: none;
+  stroke: #2dd4bf;
+  stroke-width: 2.4;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.check-anim .check-under-link path {
+  animation: cnp-draw-check 250ms cubic-bezier(0.65, 0, 0.45, 1) forwards;
+}
+@keyframes cnp-draw-check {
+  to {
+    stroke-dashoffset: 0;
+  }
+}
+.check-anim .check-pop {
+  animation: cnp-check-pop 260ms cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
+  opacity: 0;
+  transform-origin: left center;
+}
+@keyframes cnp-check-pop {
+  from {
+    opacity: 0;
+    transform: translateX(-3px) scale(0.85);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0) scale(1);
+  }
+}
+
+/* Einblenden neuer Karten */
+.card-enter {
+  animation: cnp-card-in 220ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+@keyframes cnp-card-in {
+  from {
+    opacity: 0;
+    transform: translateY(-5px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+/* Bridgestatus-Punkt */
+#bridge-dot.b-on {
+  background: #2dd4bf;
+  box-shadow: 0 0 6px #2dd4bf88;
+}
+#bridge-dot.b-off {
+  background: #f59e0b;
+}
+#bridge-dot.b-disabled {
+  background: #525252;
+}

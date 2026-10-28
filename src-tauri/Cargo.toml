@@ -1,0 +1,34 @@
+[package]
+name = "copynpaste"
+version = "1.1.0"
+description = "Globales Clipboard-Magazin mit Reverse-Paste (Alt+V)"
+authors = ["johan"]
+edition = "2021"
+rust-version = "1.90"
+
+[lib]
+name = "copynpaste_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = ["tray-icon", "image-png"] }
+tauri-plugin-global-shortcut = "2"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+chrono = { version = "0.4", features = ["serde"] }
+regex = "1"
+uuid = { version = "1", features = ["v4"] }
+base64 = "0.22"
+clipboard-rs = "0.3"
+enigo = "0.6"
+ureq = { version = "2", features = ["json"] }
+
+[profile.release]
+panic = "abort"
+codegen-units = 1
+lto = true
+opt-level = "s"
+strip = true
