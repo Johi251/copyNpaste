@@ -12,8 +12,10 @@ pub fn magazine_state(app: AppHandle) -> Vec<state::ItemLite> {
 
 /// Fügt ein bestimmtes Element per ID ein (Klick/Enter in der UI).
 #[tauri::command]
-pub fn paste_item(app: AppHandle, id: String) -> Result<(), String> {
-    paste::paste_by_id(&app, &id)
+pub async fn paste_item(app: AppHandle, id: String) -> Result<(), String> {
+    tauri::async_runtime::spawn_blocking(move || paste::paste_by_id(&app, &id))
+        .await
+        .map_err(|e| e.to_string())?
 }
 
 /// Entfernt ein Element, ohne es einzufügen.
@@ -51,6 +53,8 @@ pub fn save_config(app: AppHandle, config: config::Config) -> Result<(), String>
 
 /// Testet den Bridge-Endpunkt aus dem Einstellungen-Dialog.
 #[tauri::command]
-pub fn test_bridge(app: AppHandle) -> Result<String, String> {
-    bridge::probe(&app)
+pub async fn test_bridge(endpoint: String) -> Result<String, String> {
+    tauri::async_runtime::spawn_blocking(move || bridge::probe(&endpoint))
+        .await
+        .map_err(|e| e.to_string())?
 }

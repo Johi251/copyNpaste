@@ -11,8 +11,20 @@ use crate::{logger, paste};
 pub const TRAY_ID: &str = "copynpaste-tray";
 
 pub fn build(app: &AppHandle) -> tauri::Result<()> {
-    let toggle = MenuItem::with_id(app, "toggle", "Magazin öffnen / schließen", true, None::<&str>)?;
-    let reverse = MenuItem::with_id(app, "reverse", "Reverse Paste — Spitze einfügen", true, None::<&str>)?;
+    let toggle = MenuItem::with_id(
+        app,
+        "toggle",
+        "Magazin öffnen / schließen",
+        true,
+        None::<&str>,
+    )?;
+    let reverse = MenuItem::with_id(
+        app,
+        "reverse",
+        "Reverse Paste — Spitze einfügen",
+        true,
+        None::<&str>,
+    )?;
     let quit = MenuItem::with_id(app, "quit", "Beenden", true, None::<&str>)?;
     let menu = Menu::with_items(app, &[&toggle, &reverse, &quit])?;
 

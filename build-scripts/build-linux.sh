@@ -6,9 +6,9 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 echo "=== copyNpaste: npm install ==="
-npm install --no-fund --no-audit
+bun install --frozen-lockfile
 echo "=== copyNpaste: tauri build (Linux) ==="
 npm run tauri build -- --bundles deb
 echo
 echo "FERTIG. Artefakt:"
-echo "  src-tauri/target/release/bundle/deb/copyNpaste_1.0.0_amd64.deb"
+echo "  src-tauri/target/release/bundle/deb/copyNpaste_1.2.0_amd64.deb"

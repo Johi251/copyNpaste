@@ -34,5 +34,6 @@ export default defineConfig({
     minify: "esbuild",
     sourcemap: false,
     outDir: "dist",
+    rollupOptions: { input: { main: "index.html", feedback: "feedback.html" } },
   },
 });

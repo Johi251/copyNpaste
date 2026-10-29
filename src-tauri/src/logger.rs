@@ -33,7 +33,11 @@ pub fn log(app: &AppHandle, msg: &str) {
 
 /// Wie `log`, ohne AppHandle (aus Threads ohne Zugriff).
 pub fn log_static(msg: &str) {
-    let line = format!("[{}] {}\n", chrono::Local::now().format("%Y-%m-%d %H:%M:%S"), msg);
+    let line = format!(
+        "[{}] {}\n",
+        chrono::Local::now().format("%Y-%m-%d %H:%M:%S"),
+        msg
+    );
     #[cfg(debug_assertions)]
     eprint!("{line}");
     if let Some(f) = LOG_FILE.lock().unwrap().as_mut() {

@@ -11,7 +11,7 @@ use std::fs;
 use std::hash::{Hash, Hasher};
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
-use std::sync::Mutex;
+use std::sync::{mpsc, Mutex};
 
 use base64::Engine as _;
 use chrono::{DateTime, Local};
@@ -22,10 +22,6 @@ use uuid::Uuid;
 /// Tauri-Event-Name für Magazin-Änderungen (Frontend lauscht darauf).
 pub const EVENT_CHANGED: &str = "magazine-changed";
 
-/// Persistenz-Budget: Bilder über dieser Größe (PNG-Bytes) werden nicht
-/// mitgespeichert (RAM-Schutz; Text überlebt trotzdem).
-const PERSIST_IMAGE_MAX: usize = 4 * 1024 * 1024;
-
 // ---------------------------------------------------------------------------
 // Datenmodell
 // ---------------------------------------------------------------------------
@@ -35,14 +31,20 @@ const PERSIST_IMAGE_MAX: usize = 4 * 1024 * 1024;
 pub enum Payload {
     Text(String),
     /// PNG-kodiert, damit große Screenshots wenig RAM belegen.
-    Image { png: Vec<u8>, width: u32, height: u32 },
+    Image {
+        png: Vec<u8>,
+        width: u32,
+        height: u32,
+    },
     Files(Vec<String>),
 }
 
 /// Übermittlungsstatus einer erkannten URL an die Smart-Bridge.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum BridgeState {
+    /// Aus älteren Sitzungen ist keine Zustellbestätigung vorhanden.
+    Unknown,
     /// URL erkannt, Versand läuft.
     Pending,
     /// Webhook erfolgreich zugestellt.
@@ -137,7 +139,7 @@ pub struct ItemLite {
     pub is_github: bool,
     /// Data-URL der Miniaturansicht (Bilder).
     pub thumb: Option<String>,
-    /// Vollständiger Text — für Textvorschau in der UI (auf 600 Zeichen gekappt).
+    /// Vollständiger Text für die Suche; die Darstellung wird per CSS gekürzt.
     pub text_preview: Option<String>,
     /// Gepinnt: bleibt beim Auto-Rauswurf und wird von Alt+V übersprungen.
     pub pinned: bool,
@@ -158,15 +160,22 @@ struct PersistedItem {
     files: Option<Vec<String>>,
     captured_at_ms: i64,
     pinned: bool,
+    #[serde(default)]
+    bridge: Option<BridgeState>,
 }
 
 fn persist_path(app: &AppHandle) -> Option<PathBuf> {
-    app.path().app_data_dir().ok().map(|d| d.join("magazine.json"))
+    app.path()
+        .app_data_dir()
+        .ok()
+        .map(|d| d.join("magazine.json"))
 }
 
 /// Schreibt den Magazin-Stand weg (bei jeder Änderung).
 fn persist(app: &AppHandle, magazine: &VecDeque<ClipItem>) {
-    let Some(path) = persist_path(app) else { return };
+    let Some(path) = persist_path(app) else {
+        return;
+    };
     let items: Vec<PersistedItem> = magazine
         .iter()
         .map(|i| {
@@ -175,11 +184,7 @@ fn persist(app: &AppHandle, magazine: &VecDeque<ClipItem>) {
                 Payload::Image { png, width, height } => (
                     "image",
                     None,
-                    if png.len() <= PERSIST_IMAGE_MAX {
-                        Some(base64::engine::general_purpose::STANDARD.encode(png))
-                    } else {
-                        None // zu groß für die Persistenz — Text/Rest überlebt nicht als Bild
-                    },
+                    Some(base64::engine::general_purpose::STANDARD.encode(png)),
                     Some(*width),
                     Some(*height),
                     None,
@@ -196,6 +201,7 @@ fn persist(app: &AppHandle, magazine: &VecDeque<ClipItem>) {
                 files,
                 captured_at_ms: i.captured_at.timestamp_millis(),
                 pinned: i.pinned,
+                bridge: i.url.as_ref().map(|u| u.bridge),
             }
         })
         .collect();
@@ -203,28 +209,37 @@ fn persist(app: &AppHandle, magazine: &VecDeque<ClipItem>) {
     let json = match serde_json::to_string(&items) {
         Ok(j) => j,
         Err(e) => {
-            crate::logger::log_fmt(app, format!("Persistenz: Serialisierung fehlgeschlagen ({e})"));
+            crate::logger::log_fmt(
+                app,
+                format!("Persistenz: Serialisierung fehlgeschlagen ({e})"),
+            );
             return;
         }
     };
-    if let Err(e) = fs::write(&path, json) {
+    if let Err(e) = crate::storage::write_atomic(&path, json.as_bytes()) {
         crate::logger::log_fmt(app, format!("Persistenz: Schreiben fehlgeschlagen ({e})"));
     }
 }
 
 /// Lädt den Magazin-Stand beim Start zurück.
-fn restore(app: &AppHandle) {
+fn restore(app: &AppHandle) -> Result<(), Box<dyn std::error::Error>> {
     use chrono::TimeZone as _;
-    let Some(path) = persist_path(app) else { return };
+    let Some(path) = persist_path(app) else {
+        return Err("Kein Datenverzeichnis".into());
+    };
     let raw = match fs::read_to_string(&path) {
         Ok(r) => r,
-        Err(_) => return, // noch nie gespeichert — normal beim ersten Start
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(()),
+        Err(e) => return Err(e.into()),
     };
     let items: Vec<PersistedItem> = match serde_json::from_str(&raw) {
         Ok(v) => v,
         Err(e) => {
-            crate::logger::log_fmt(app, format!("Persistenz: Datei unlesbar ({e}) — starte leer"));
-            return;
+            crate::logger::log_fmt(
+                app,
+                format!("Persistenz: Datei unlesbar ({e}) — Start gestoppt, Datei bleibt erhalten"),
+            );
+            return Err(e.into());
         }
     };
 
@@ -261,10 +276,12 @@ fn restore(app: &AppHandle) {
         item.id = p.id.parse().unwrap_or_else(|_| Uuid::new_v4());
         item.captured_at = captured_at;
         item.pinned = p.pinned;
-        // Beim Wiederherstellen gilt eine URL als bereits übermittelt
-        // (kein erneuter Webhook nach Neustart).
+        // Zustellbestätigung nur übernehmen, wenn sie tatsächlich gespeichert wurde.
         if let Some(u) = item.url.as_mut() {
-            u.bridge = BridgeState::Sent;
+            u.bridge = match p.bridge {
+                Some(BridgeState::Pending) | None => BridgeState::Unknown,
+                Some(status) => status,
+            };
         }
         item.build_thumb();
         mag.push_back(item);
@@ -278,6 +295,7 @@ fn restore(app: &AppHandle) {
                 dropped_images_pre = if dropped_images > 0 { format!(" ({dropped_images} zu große Bilder ausgelassen)") } else { String::new() }),
         );
     }
+    Ok(())
 }
 
 // ---------------------------------------------------------------------------
@@ -286,8 +304,9 @@ fn restore(app: &AppHandle) {
 
 pub struct AppState {
     pub magazine: Mutex<VecDeque<ClipItem>>,
-    /// Fingerprint des letzten erfassten (fremden) Clipboard-Inhalts — dedupliziert.
-    pub last_capture: AtomicU64,
+    pub paste_lock: Mutex<()>,
+    persist_lock: Mutex<()>,
+    persist_tx: mpsc::SyncSender<()>,
     /// Fingerprint des letzten selbst geschriebenen Clipboard-Inhalts.
     pub self_write: AtomicU64,
     /// Verbraucht genau das nächste Clipboard-Ereignis, wenn es der eigenen
@@ -296,10 +315,12 @@ pub struct AppState {
 }
 
 impl AppState {
-    pub fn new() -> Self {
+    fn new(persist_tx: mpsc::SyncSender<()>) -> Self {
         Self {
             magazine: Mutex::new(VecDeque::new()),
-            last_capture: AtomicU64::new(0),
+            paste_lock: Mutex::new(()),
+            persist_lock: Mutex::new(()),
+            persist_tx,
             self_write: AtomicU64::new(0),
             ignore_next: AtomicBool::new(false),
         }
@@ -307,8 +328,16 @@ impl AppState {
 }
 
 pub fn init(app: AppHandle) -> Result<(), Box<dyn std::error::Error>> {
-    app.manage(AppState::new());
-    restore(&app);
+    let (tx, rx) = mpsc::sync_channel(1);
+    app.manage(AppState::new(tx));
+    restore(&app)?;
+    std::thread::Builder::new()
+        .name("cnp-persist".into())
+        .spawn(move || {
+            while rx.recv().is_ok() {
+                persist_now(&app);
+            }
+        })?;
     Ok(())
 }
 
@@ -343,29 +372,21 @@ pub fn ingest(app: &AppHandle, mut item: ClipItem) {
     let fp = item.fingerprint;
 
     // Selbst-Reflektion: das Ereignis stammt von unserem eigenen Paste-Schreiben.
-    if state.ignore_next.load(Ordering::SeqCst)
+    if state.ignore_next.swap(false, Ordering::SeqCst)
         && state.self_write.load(Ordering::SeqCst) == fp
     {
-        state.ignore_next.store(false, Ordering::SeqCst);
         return;
     }
-    // Identischer Inhalt wie zuvor — kein neuer Magazin-Platz.
-    if state.last_capture.load(Ordering::SeqCst) == fp {
-        return;
-    }
-    state.last_capture.store(fp, Ordering::SeqCst);
-
     item.build_thumb();
 
     let capacity = crate::config::get(app).capacity.max(1);
     {
         let mut mag = state.magazine.lock().unwrap();
-        mag.push_back(item.clone());
-        // Überkapazität: älteste UNgepinnte fallen zuerst.
-        while mag.len() > capacity {
-            let Some(pos) = mag.iter().position(|i| !i.pinned) else { break };
-            mag.remove(pos);
+        if is_duplicate(&mag, fp) {
+            return;
         }
+        mag.push_back(item.clone());
+        trim_capacity(&mut mag, capacity);
     }
 
     let kind = match &item.payload {
@@ -375,10 +396,15 @@ pub fn ingest(app: &AppHandle, mut item: ClipItem) {
     };
     crate::logger::log_fmt(
         app,
-        format!("Erfasst: {} — Magazin belegt {}/{}", kind, {
-            let mag = state.magazine.lock().unwrap();
-            mag.len()
-        }, capacity),
+        format!(
+            "Erfasst: {} — Magazin belegt {}/{}",
+            kind,
+            {
+                let mag = state.magazine.lock().unwrap();
+                mag.len()
+            },
+            capacity
+        ),
     );
 
     emit_update(app);
@@ -395,19 +421,27 @@ pub fn ingest(app: &AppHandle, mut item: ClipItem) {
     }
 }
 
-/// Entfernt die Spitze (zuletzt kopiert, ungepinnt) und liefert sie zurück.
-/// Gepinnte Elemente werden von Alt+V übersprungen — sie bleiben im Magazin.
-pub fn pop_last(app: &AppHandle) -> Option<ClipItem> {
-    let state = app.state::<AppState>();
-    let removed = {
-        let mut mag = state.magazine.lock().unwrap();
-        let idx = mag.iter().rposition(|i| !i.pinned);
-        idx.and_then(|i| mag.remove(i))
-    };
-    if removed.is_some() {
-        emit_update(app);
+/// Wählt das jüngste kompatible ungepinnte Element, ohne es zu entfernen.
+pub fn select_for_paste(mag: &VecDeque<ClipItem>, text_only: bool) -> Option<ClipItem> {
+    mag.iter()
+        .rev()
+        .find(|i| !i.pinned && (!text_only || matches!(i.payload, Payload::Text(_))))
+        .cloned()
+}
+
+fn is_duplicate(mag: &VecDeque<ClipItem>, fingerprint: u64) -> bool {
+    mag.back()
+        .is_some_and(|i| !i.pinned && i.fingerprint == fingerprint)
+}
+
+/// Gemeinsamer Schutz für Aufnahme und Kapazitätsänderung.
+pub fn trim_capacity(mag: &mut VecDeque<ClipItem>, capacity: usize) {
+    while mag.len() > capacity {
+        let Some(pos) = mag.iter().position(|i| !i.pinned) else {
+            break;
+        };
+        mag.remove(pos);
     }
-    removed
 }
 
 /// Entfernt ein Element per ID und liefert es zurück.
@@ -416,7 +450,9 @@ pub fn remove_by_id(app: &AppHandle, id: &str) -> Option<ClipItem> {
     let uuid = Uuid::parse_str(id).ok()?;
     let removed = {
         let mut mag = state.magazine.lock().unwrap();
-        mag.iter().position(|i| i.id == uuid).and_then(|pos| mag.remove(pos))
+        mag.iter()
+            .position(|i| i.id == uuid)
+            .and_then(|pos| mag.remove(pos))
     };
     if removed.is_some() {
         emit_update(app);
@@ -447,7 +483,14 @@ pub fn toggle_pin(app: &AppHandle, id: &str) -> Result<bool, String> {
             })
             .ok_or_else(|| "Element nicht gefunden.".to_string())?
     };
-    crate::logger::log_fmt(app, format!("Pin {} ({})", if pinned { "gesetzt" } else { "entfernt" }, id));
+    crate::logger::log_fmt(
+        app,
+        format!(
+            "Pin {} ({})",
+            if pinned { "gesetzt" } else { "entfernt" },
+            id
+        ),
+    );
     emit_update(app);
     Ok(pinned)
 }
@@ -482,8 +525,14 @@ pub fn emit_update(app: &AppHandle) {
     // Tray-Tooltip: Elementzahl + Vorschau der Paste-Spitze.
     if let Some(tray) = app.tray_by_id(crate::tray::TRAY_ID) {
         let tip = match lites.iter().find(|i| !i.pinned) {
-            Some(top) => format!("copyNpaste — {} Elemente · Als nächstes einfügen: {}", lites.len(), truncate(&top.preview, 40)),
-            None if !lites.is_empty() => format!("copyNpaste — {} Elemente (alle gepinnt)", lites.len()),
+            Some(top) => format!(
+                "copyNpaste — {} Elemente · Als nächstes einfügen: {}",
+                lites.len(),
+                truncate(&top.preview, 40)
+            ),
+            None if !lites.is_empty() => {
+                format!("copyNpaste — {} Elemente (alle gepinnt)", lites.len())
+            }
             None => "copyNpaste — Magazin leer".to_string(),
         };
         let _ = tray.set_tooltip(Some(tip));
@@ -493,10 +542,14 @@ pub fn emit_update(app: &AppHandle) {
         crate::logger::log_fmt(app, format!("Fehler beim Event-Versand: {e}"));
     }
 
-    // Persistenz (nach dem Event — UI-Latenz hat Vorrang).
+    let _ = app.state::<AppState>().persist_tx.try_send(());
+}
+
+/// Der Worker und das Beenden speichern stets den neuesten Stand unter derselben Sperre.
+pub fn persist_now(app: &AppHandle) {
     let state = app.state::<AppState>();
+    let _write = state.persist_lock.lock().unwrap();
     let mag = state.magazine.lock().unwrap().clone();
-    drop(state);
     persist(app, &mag);
 }
 
@@ -520,13 +573,21 @@ pub fn snapshot(app: &AppHandle) -> Vec<ItemLite> {
             let position = (idx + 1) as u32;
             let (preview, meta, text_preview) = match &item.payload {
                 Payload::Text(t) => {
-                    let first_line = t.lines().next().unwrap_or("").chars().take(80).collect::<String>();
+                    let first_line = t
+                        .lines()
+                        .next()
+                        .unwrap_or("")
+                        .chars()
+                        .take(80)
+                        .collect::<String>();
                     let n = t.chars().count();
-                    (first_line, format!("{n} Zeichen"), Some(t.chars().take(600).collect::<String>()))
+                    (first_line, format!("{n} Zeichen"), Some(t.clone()))
                 }
-                Payload::Image { width, height, png } => {
-                    (format!("{width}×{height}"), format!("{width}×{height} · {}", kib(png.len())), None)
-                }
+                Payload::Image { width, height, png } => (
+                    format!("{width}×{height}"),
+                    format!("{width}×{height} · {}", kib(png.len())),
+                    None,
+                ),
                 Payload::Files(f) => {
                     let base = |p: &String| p.rsplit(['\\', '/']).next().unwrap_or(p).to_string();
                     let name = f.first().map(&base).unwrap_or_default();
@@ -615,48 +676,46 @@ mod tests {
         assert_eq!(*mag.back().unwrap(), 11);
     }
 
-    #[derive(Clone, PartialEq, Debug)]
-    struct T {
-        v: u32,
-        pinned: bool,
-    }
-
-    fn evict(mag: &mut VecDeque<T>, capacity: usize) {
-        while mag.len() > capacity {
-            let Some(pos) = mag.iter().position(|i| !i.pinned) else { break };
-            mag.remove(pos);
+    #[test]
+    fn echte_pins_bleiben_beim_verkleinern() {
+        let mut mag = VecDeque::new();
+        for n in 0..25 {
+            let mut item = ClipItem::new(Payload::Text(n.to_string()));
+            item.pinned = n == 0;
+            mag.push_back(item);
         }
-    }
-
-    fn pop_unpinned(mag: &mut VecDeque<T>) -> Option<T> {
-        let idx = mag.iter().rposition(|i| !i.pinned);
-        idx.and_then(|i| mag.remove(i))
+        trim_capacity(&mut mag, 10);
+        assert_eq!(mag.len(), 10);
+        assert!(mag.front().unwrap().pinned);
+        assert!(!select_for_paste(&mag, false).unwrap().pinned);
     }
 
     #[test]
-    fn pins_ueberleben_auto_rauswurf() {
-        // Kapazität 3, das älteste Element ist gepinnt → das älteste UNgepinnte fliegt.
-        let mut mag: VecDeque<T> = VecDeque::new();
-        for (v, pinned) in [(1, true), (2, false), (3, false), (4, false)] {
-            mag.push_back(T { v, pinned });
-            evict(&mut mag, 3);
-        }
-        assert_eq!(mag.len(), 3);
-        assert_eq!(mag.front().unwrap().v, 1, "Gepinntes bleibt trotz Überkapazität");
-        assert_eq!(mag.iter().map(|t| t.v).collect::<Vec<_>>(), vec![1, 3, 4]);
+    fn verbrauchter_oder_gepinnter_inhalt_kann_erneut_erfasst_werden() {
+        let item = ClipItem::new(Payload::Text("same".into()));
+        let mut mag = VecDeque::from([item.clone()]);
+        assert!(is_duplicate(&mag, item.fingerprint));
+        mag.pop_back();
+        assert!(!is_duplicate(&mag, item.fingerprint));
+        let mut pinned = item.clone();
+        pinned.pinned = true;
+        mag.push_back(pinned);
+        assert!(!is_duplicate(&mag, item.fingerprint));
     }
 
     #[test]
-    fn reverse_paste_ueberspringt_pins() {
-        let mut mag: VecDeque<T> = VecDeque::new();
-        for (v, pinned) in [(1, false), (2, true), (3, false)] {
-            mag.push_back(T { v, pinned });
-        }
-        // Alt+V nimmt 3 (jüngstes ungepinntes), nie die gepinnte 2.
-        assert_eq!(pop_unpinned(&mut mag).map(|t| t.v), Some(3));
-        assert_eq!(pop_unpinned(&mut mag).map(|t| t.v), Some(1));
-        assert_eq!(pop_unpinned(&mut mag), None, "Gepinnte werden von Alt+V nie genommen");
-        assert_eq!(mag.len(), 1, "Gepinnte 2 bleibt als letzte im Magazin");
+    fn textziel_ueberspringt_bilder_ohne_entnahme() {
+        let mut mag = VecDeque::from([ClipItem::new(Payload::Text("  code\n".into()))]);
+        mag.push_back(ClipItem::new(Payload::Files(vec!["file.txt".into()])));
+        assert!(matches!(
+            select_for_paste(&mag, true).unwrap().payload,
+            Payload::Text(_)
+        ));
+        assert!(matches!(
+            select_for_paste(&mag, false).unwrap().payload,
+            Payload::Files(_)
+        ));
+        assert_eq!(mag.len(), 2);
     }
 
     #[test]
@@ -672,11 +731,16 @@ mod tests {
             files: None,
             captured_at_ms: 1_799_000_000_000,
             pinned: true,
+            bridge: Some(BridgeState::EndpointOffline),
         }];
         let json = serde_json::to_string(&items).expect("serialisierbar");
         let back: Vec<PersistedItem> = serde_json::from_str(&json).expect("deserialisierbar");
         assert_eq!(back.len(), 1);
-        assert_eq!(back[0].text.as_deref(), Some("https://github.com/example/repo"));
+        assert_eq!(
+            back[0].text.as_deref(),
+            Some("https://github.com/example/repo")
+        );
         assert!(back[0].pinned);
+        assert_eq!(back[0].bridge, Some(BridgeState::EndpointOffline));
     }
 }

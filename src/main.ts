@@ -22,10 +22,23 @@ let filter = "";
 let quickPasteId: string | undefined;
 
 const cardActions = {
-  onPaste: (id: string) => void invoke("paste_item", { id }).catch(console.error),
-  onDelete: (id: string) => void invoke("delete_item", { id }).catch(console.error),
-  onPin: (id: string) => void invoke("toggle_pin", { id }).catch(console.error),
+  onPaste: (id: string) => void invoke("paste_item", { id }).catch(reportError),
+  onDelete: (id: string) => void invoke("delete_item", { id }).catch(reportError),
+  onPin: (id: string) => void invoke("toggle_pin", { id }).catch(reportError),
 };
+
+function reportError(error: unknown): void {
+  let out = document.getElementById("operation-error");
+  if (!out) {
+    out = document.createElement("div");
+    out.id = "operation-error";
+    out.setAttribute("role", "alert");
+    out.className = "fixed bottom-10 left-4 right-4 rounded border border-amber-800 bg-neutral-950 p-3 text-xs text-amber-400";
+    out.addEventListener("click", () => out?.remove());
+    document.body.append(out);
+  }
+  out.textContent = String(error);
+}
 
 // ─── Rendering ───────────────────────────────────────────────────────────
 function matches(item: ItemLite): boolean {
@@ -113,6 +126,7 @@ async function bootstrap(): Promise<void> {
     items = event.payload;
     render();
   });
+  await listen<string>("operation-error", (event) => reportError(event.payload));
 
   bindUi();
 }
@@ -154,7 +168,7 @@ function bindUi(): void {
   search.addEventListener("keydown", (e) => {
     if (e.key === "Enter" && quickPasteId) {
       e.preventDefault();
-      void invoke("paste_item", { id: quickPasteId }).catch(console.error);
+      void invoke("paste_item", { id: quickPasteId }).catch(reportError);
     }
   });
 

@@ -384,7 +384,7 @@ dependencies = [
 
 [[package]]
 name = "copynpaste"
-version = "1.1.0"
+version = "1.2.0"
 dependencies = [
  "base64 0.22.1",
  "chrono",
@@ -398,6 +398,7 @@ dependencies = [
  "tauri-plugin-global-shortcut",
  "ureq",
  "uuid",
+ "windows 0.61.3",
 ]
 
 [[package]]

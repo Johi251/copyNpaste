@@ -1,7 +1,7 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
   "productName": "copyNpaste",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "identifier": "de.johan.copynpaste",
   "build": {
     "beforeDevCommand": "npm run dev",
@@ -14,7 +14,7 @@
     "windows": [
       {
         "label": "magazine",
-        "title": "copyNpaste — Clipboard-Magazin",
+        "title": "copyNpaste â€” Clipboard-Magazin",
         "width": 1120,
         "height": 700,
         "minWidth": 820,
@@ -34,7 +34,10 @@
   },
   "bundle": {
     "active": true,
-    "targets": ["nsis", "deb"],
+    "targets": [
+      "nsis",
+      "deb"
+    ],
     "icon": [
       "icons/32x32.png",
       "icons/128x128.png",
@@ -44,14 +47,17 @@
     ],
     "category": "Utility",
     "shortDescription": "Globales Clipboard-Magazin mit Reverse-Paste",
-    "longDescription": "copyNpaste fängt jedes Kopieren im Hintergrund ab und stapelt Text, Bilder und Dateien in einem Magazin. Alt+V fügt das zuletzt kopierte Element ein und entfernt es aus dem Magazin — das vorletzte rückt nach. URLs werden automatisch per Localhost-Webhook an den Bookmarks Dynamic Manager (Today's Hunt) übergeben.",
+    "longDescription": "copyNpaste fÃ¤ngt jedes Kopieren im Hintergrund ab und stapelt Text, Bilder und Dateien in einem Magazin. Alt+V fÃ¼gt das zuletzt kopierte Element ein und entfernt es aus dem Magazin â€” das vorletzte rÃ¼ckt nach. URLs werden automatisch per Localhost-Webhook an den Bookmarks Dynamic Manager (Today's Hunt) Ã¼bergeben.",
     "windows": {
       "webviewInstallMode": {
         "type": "downloadBootstrapper"
       },
       "nsis": {
         "installMode": "currentUser",
-        "languages": ["German", "English"],
+        "languages": [
+          "German",
+          "English"
+        ],
         "displayLanguageSelector": false
       }
     },

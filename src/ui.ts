@@ -70,6 +70,8 @@ function urlBody(item: ItemLite): HTMLDivElement {
       <span class="check-pop ${first ? "" : "!opacity-100"} inline-flex items-center gap-1 rounded border border-teal-900/60 bg-teal-950/40 px-1.5 py-px text-[10px] text-teal-400">
         ${item.isGithub ? "GitHub" : "URL"} → Today's Hunt
       </span>`;
+  } else if (item.bridge === "unknown") {
+    under.textContent = "Zustellung aus früherer Sitzung nicht bestätigt";
   } else if (item.bridge === "pending") {
     under.innerHTML = `<span class="inline-flex items-center gap-1.5 text-[10px] text-teal-700">
       <span class="size-1.5 animate-pulse rounded-full bg-teal-600"></span> Bridge sendet …
@@ -235,6 +237,7 @@ export function makeCard(item: ItemLite, actions: CardActions, nextId?: string):
   // Karten-Aktionen
   card.addEventListener("click", () => actions.onPaste(item.id));
   card.addEventListener("keydown", (e) => {
+    if (e.target !== card) return;
     if (e.key === "Enter" || e.key === " ") {
       e.preventDefault();
       actions.onPaste(item.id);

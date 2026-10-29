@@ -14,11 +14,14 @@
 pub mod bridge;
 pub mod commands;
 pub mod config;
+pub mod feedback;
 pub mod logger;
 pub mod monitor;
 pub mod paste;
 pub mod shortcuts;
 pub mod state;
+pub mod storage;
+pub mod target;
 pub mod tray;
 
 use tauri::Manager;
@@ -45,7 +48,7 @@ pub fn run() {
             state::init(app.handle().clone())?;
             config::init(app.handle().clone())?;
 
-            logger::log(app.handle(), "copyNpaste v1.1.0 startet");
+            logger::log(app.handle(), "copyNpaste v1.2.0 startet");
 
             let cfg = config::get(app.handle());
             logger::log_fmt(
@@ -63,6 +66,7 @@ pub fn run() {
             shortcuts::register(app.handle())?;
             monitor::start(app.handle().clone())?;
             tray::build(app.handle())?;
+            feedback::init(app.handle())?;
 
             // Fenster startet unsichtbar: Hintergrund-Dienst im Tray.
             Ok(())
@@ -76,8 +80,13 @@ pub fn run() {
                 }
             }
         })
-        .run(tauri::generate_context!())
-        .expect("copyNpaste: Fehler beim Starten der Anwendung");
+        .build(tauri::generate_context!())
+        .expect("copyNpaste: Fehler beim Starten der Anwendung")
+        .run(|app, event| {
+            if matches!(event, tauri::RunEvent::ExitRequested { .. }) {
+                state::persist_now(app);
+            }
+        });
 }
 
 /// Zeigt/versteckt das Magazin-Fenster (Tray-Klick oder Toggle-Shortcut).
@@ -87,6 +96,7 @@ pub fn toggle_window(app: &tauri::AppHandle) {
             let _ = win.hide();
             logger::log(app, "Magazin-Fenster versteckt (Toggle)");
         } else {
+            target::remember();
             let _ = win.show();
             let _ = win.set_focus();
             logger::log(app, "Magazin-Fenster angezeigt (Toggle)");

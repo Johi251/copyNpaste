@@ -16,7 +16,7 @@ export interface ItemLite {
   pinned: boolean;
 }
 
-export type BridgeState = "pending" | "sent" | "endpoint-offline" | "disabled";
+export type BridgeState = "unknown" | "pending" | "sent" | "endpoint-offline" | "disabled";
 
 export interface AppConfig {
   capacity: number;

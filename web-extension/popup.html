@@ -133,19 +133,20 @@
       </div>
       <div class="spacer"></div>
       <span class="count" id="count">0 / 25</span>
+      <button class="clear" id="read" title="Zwischenablage aufnehmen">Aufnehmen</button>
       <button class="clear" id="clear" title="Magazin leeren">Leeren</button>
     </header>
 
     <div class="toolbar">
-      <input id="search" type="text" placeholder="Magazin durchsuchen … Enter = ersten Treffer kopieren" autocomplete="off" spellcheck="false" />
+      <input id="search" type="text" placeholder="Magazin durchsuchen … Enter = ersten Treffer entnehmen" autocomplete="off" spellcheck="false" />
     </div>
-    <div class="hint" id="hint">Kopiere etwas (Strg+C) und öffne das Add-on — der Inhalt landet automatisch oben im Magazin. Klick auf ein Element kopiert es zurück.</div>
+    <div class="hint" id="hint">Textkopien auf Webseiten werden aufgenommen. Alt+Shift+Y übernimmt die Zwischenablage. Klick kopiert ein Element zurück und entnimmt es danach.</div>
 
     <div class="list" id="list"></div>
 
     <footer>
       <span>Desktop-App: Alt+V Reverse-Paste · Pins · Smart-Bridge</span>
-      <span>v1.1.0</span>
+      <span>v1.2.0</span>
     </footer>
 
     <script src="popup.js"></script>

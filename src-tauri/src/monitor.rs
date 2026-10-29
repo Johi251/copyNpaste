@@ -5,7 +5,9 @@
 //! jeder Kopieraktion landet zuverlässig im Magazin.
 
 use clipboard_rs::common::RustImage;
-use clipboard_rs::{Clipboard, ClipboardContext, ClipboardHandler, ClipboardWatcher, ClipboardWatcherContext};
+use clipboard_rs::{
+    Clipboard, ClipboardContext, ClipboardHandler, ClipboardWatcher, ClipboardWatcherContext,
+};
 use tauri::AppHandle;
 
 use crate::state::{self, ClipItem, Payload};
@@ -20,7 +22,10 @@ pub fn start(app: AppHandle) -> Result<(), String> {
     impl ClipboardHandler for ChangeHandler {
         fn on_clipboard_change(&mut self) {
             if is_privacy_excluded(&self.ctx) {
-                crate::logger::log(&self.app, "Datenschutz: Kopie uebergangen (Passwort-Manager-Marker)");
+                crate::logger::log(
+                    &self.app,
+                    "Datenschutz: Kopie uebergangen (Passwort-Manager-Marker)",
+                );
                 return;
             }
             match capture(&self.ctx) {
@@ -36,7 +41,8 @@ pub fn start(app: AppHandle) -> Result<(), String> {
         app: app.clone(),
         ctx: ClipboardContext::new().map_err(|e| format!("Clipboard-Kontext: {e:?}"))?,
     };
-    let mut watcher = ClipboardWatcherContext::new().map_err(|e| format!("Clipboard-Watcher: {e:?}"))?;
+    let mut watcher =
+        ClipboardWatcherContext::new().map_err(|e| format!("Clipboard-Watcher: {e:?}"))?;
     watcher.add_handler(handler);
 
     std::thread::Builder::new()
@@ -44,7 +50,10 @@ pub fn start(app: AppHandle) -> Result<(), String> {
         .spawn(move || watcher.start_watch())
         .map_err(|e| format!("Watcher-Thread: {e:?}"))?;
 
-    crate::logger::log(&app, "Clipboard-Watcher gestartet (lauert auf jede Aenderung der Zwischenablage)");
+    crate::logger::log(
+        &app,
+        "Clipboard-Watcher gestartet (lauert auf jede Aenderung der Zwischenablage)",
+    );
     Ok(())
 }
 
@@ -73,7 +82,11 @@ fn capture(ctx: &ClipboardContext) -> Option<ClipItem> {
             if let Ok(png) = img.to_png() {
                 let bytes = png.get_bytes().to_vec();
                 if !bytes.is_empty() && bytes.len() <= MAX_IMAGE_BYTES {
-                    return Some(ClipItem::new(Payload::Image { png: bytes, width, height }));
+                    return Some(ClipItem::new(Payload::Image {
+                        png: bytes,
+                        width,
+                        height,
+                    }));
                 }
             }
         }
@@ -81,8 +94,8 @@ fn capture(ctx: &ClipboardContext) -> Option<ClipItem> {
 
     // 4) Text (reiner Text, ggf. mit Formatierung — nur der Plain-Text zählt)
     if let Ok(text) = ctx.get_text() {
-        let t = text.trim_end_matches('\0').trim().to_string();
-        if !t.is_empty() && t.len() <= MAX_TEXT_BYTES {
+        let t = text.trim_end_matches('\0').to_string();
+        if !t.trim().is_empty() && t.len() <= MAX_TEXT_BYTES {
             return Some(ClipItem::new(Payload::Text(t)));
         }
     }
@@ -100,11 +113,7 @@ fn is_privacy_excluded(ctx: &ClipboardContext) -> bool {
     let Ok(formats) = ctx.available_formats() else {
         return false;
     };
-    let has = |name: &str| {
-        formats
-            .iter()
-            .any(|f| f.eq_ignore_ascii_case(name))
-    };
+    let has = |name: &str| formats.iter().any(|f| f.eq_ignore_ascii_case(name));
 
     // Expliziter Ausschluss-Marker (Windows 10+)
     if has("ExcludeClipboardContentFromMonitorProcessing") {

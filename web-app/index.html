@@ -192,7 +192,7 @@
       <span>Clipboard-Magazin · Web</span>
     </div>
     <div class="spacer"></div>
-    <span class="badge">v1.1.0 · Türkis-Jade</span>
+    <span class="badge">v1.2.0 · Türkis-Jade</span>
   </header>
 
   <section class="hero">
@@ -200,7 +200,7 @@
     <p>
       copyNpaste verwandelt die Zwischenablage in ein Magazin: Alles, was du kopierst, stapelt sich —
       und <span class="kbd">Alt&nbsp;+&nbsp;V</span> fügt das Zuletzt-kopierte ein, entfernt es aus dem Stapel
-      und lässt das Vorletzte aufrücken. Hier im Browser kannst du das Magazin direkt ausprobieren:
+      und lässt das Vorletzte aufrücken. Die Desktop-App arbeitet systemweit. Hier im Browser werden Inhalte manuell aufgenommen; Alt+V kopiert und entnimmt die Spitze. Anschließend im Zielfeld Strg+V drücken:
     </p>
   </section>
 
@@ -208,6 +208,7 @@
     <div class="toolbar">
       <input id="search" type="text" placeholder="Magazin durchsuchen … Enter kopiert den ersten Treffer zurück" autocomplete="off" spellcheck="false" />
       <button class="btn primary" id="btn-read" title="Liest die aktuelle Zwischenablage ins Magazin">Aus Zwischenablage aufnehmen</button>
+      <button class="btn" id="btn-pop">Spitze entnehmen (Alt+V)</button>
       <button class="btn" id="btn-clear">Leeren</button>
       <div class="meter">
         <div class="bar"><i id="fill" style="width:0%"></i></div>
@@ -217,7 +218,7 @@
 
     <div class="paste-zone" id="paste-zone">
       <b>Strg + V irgendwo auf dieser Seite</b> — Text und Bilder landen automatisch im Magazin.
-      Klick auf eine Karte kopiert den Inhalt zurück in die Zwischenablage.
+      Klick auf eine Karte kopiert den Inhalt zurück und entnimmt ihn. Zum Einfügen im Ziel anschließend Strg+V drücken.
     </div>
 
     <div class="cols">
@@ -232,6 +233,7 @@
     </div>
   </section>
 
+  <p id="error" role="alert" style="color:#fbbf24;padding-top:12px"></p>
   <section class="features">
     <div class="feature">
       <h3><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 17V3"/><path d="m6 11 6 6 6-6"/><path d="M19 21H5"/></svg> Reverse-Paste</h3>
@@ -251,151 +253,13 @@
     <span>copyNpaste — Teil des aKlik-Ökosystems (aKlik-Deployer · Bookmarks Dynamic Manager)</span>
     <div class="spacer"></div>
     <a href="https://github.com/Johi251/copyNpaste" rel="noopener">GitHub</a>
-    <span>· Desktop: Windows · macOS · Linux</span>
+    <a href="https://github.com/Johi251/copyNpaste/releases/latest">Downloads &amp; Gesamt-ZIP</a>
+    <a href="manual.html">Handbuch &amp; Workflows</a>
+    <a href="https://johi251.github.io/bookmarks-dynamic-manager/">Bookmarks Dynamic Manager</a>
+    <a href="https://aklik-deployer.pages.dev">aKlik-Deployer</a>
   </footer>
 </div>
 
-<script>
-(() => {
-  "use strict";
-  const CAPACITY = 25;
-  const STORE_KEY = "copynpaste-web-magazine";
-  const urlRe = /^https?:\/\/[^\s]+$/i;
-
-  const $ = (id) => document.getElementById(id);
-  let items = [];   // { id, kind: "text"|"image", text, dataUrl?, at }
-  let filter = "";
-
-  // ── Persistenz (Texte; Bilder nur Session) ──
-  function load() {
-    try {
-      const raw = localStorage.getItem(STORE_KEY);
-      if (raw) items = JSON.parse(raw).filter((i) => i.kind === "text");
-    } catch { /* ignorieren */ }
-  }
-  function save() {
-    try {
-      localStorage.setItem(STORE_KEY, JSON.stringify(items.filter((i) => i.kind === "text").slice(0, CAPACITY)));
-    } catch { /* ignorieren */ }
-  }
-
-  function fmtTime(ts) {
-    const d = new Date(ts), now = new Date();
-    const hm = `${String(d.getHours()).padStart(2,"0")}:${String(d.getMinutes()).padStart(2,"0")}`;
-    return d.toDateString() === now.toDateString() ? hm : `${String(d.getDate()).padStart(2,"0")}.${String(d.getMonth()+1).padStart(2,"0")}. ${hm}`;
-  }
-
-  function push(item) {
-    if (items[0] && items[0].kind === item.kind && items[0].text === item.text && items[0].dataUrl === item.dataUrl) return;
-    items.unshift(item);
-    items = items.slice(0, CAPACITY);
-    save(); render();
-  }
-
-  // ── Aufnahme ──
-  function harvestText(text) {
-    text = (text ?? "").trim();
-    if (!text || text.length > 200000) return;
-    push({ id: crypto.randomUUID(), kind: "text", text, at: Date.now() });
-  }
-  async function harvestImage(file) {
-    if (!file.type.startsWith("image/")) return;
-    const url = await new Promise((res) => { const r = new FileReader(); r.onload = () => res(r.result); r.readAsDataURL(file); });
-    push({ id: crypto.randomUUID(), kind: "image", text: file.name || file.type, dataUrl: url, at: Date.now() });
-  }
-
-  document.addEventListener("paste", (e) => {
-    const cd = e.clipboardData; if (!cd) return;
-    const file = [...(cd.files ?? [])].find((f) => f.type.startsWith("image/"));
-    if (file) { void harvestImage(file); e.preventDefault(); return; }
-    const text = cd.getData("text/plain");
-    if (text) { harvestText(text); e.preventDefault(); }
-  });
-
-  $("btn-read").addEventListener("click", async () => {
-    try { harvestText(await navigator.clipboard.readText()); } catch { /* Rechte fehlen */ }
-  });
-
-  // ── Zurückkopieren ──
-  async function copyBack(item) {
-    try {
-      if (item.kind === "text") {
-        await navigator.clipboard.writeText(item.text);
-      } else {
-        const blob = await (await fetch(item.dataUrl)).blob();
-        await navigator.clipboard.write([new ClipboardItem({ [blob.type]: blob })]);
-      }
-      flash(item.id);
-    } catch { /* Browser verweigert */ }
-  }
-  function flash(id) {
-    document.querySelectorAll(".card").forEach((el) => el.classList.toggle("copied", el.dataset.id === id));
-    setTimeout(() => document.querySelectorAll(".card.copied").forEach((el) => el.classList.remove("copied")), 900);
-  }
-
-  // ── Rendering ──
-  function render() {
-    const visible = filter ? items.filter((i) => (i.text ?? "").toLowerCase().includes(filter)) : items;
-    const texts = visible.filter((i) => i.kind === "text");
-    const media = visible.filter((i) => i.kind !== "text");
-    for (const [el, list] of [[$("list-text"), texts], [$("list-media"), media]]) {
-      el.innerHTML = "";
-      if (list.length === 0) {
-        const d = document.createElement("div");
-        d.className = "empty";
-        d.innerHTML = filter ? "<b>Keine Treffer</b>Suchbegriff anpassen" : "<b>Noch leer</b>Strg + V auf dieser Seite";
-        el.append(d);
-        continue;
-      }
-      for (const item of list) {
-        const card = document.createElement("div");
-        card.className = "card"; card.dataset.id = item.id;
-        const isUrl = item.kind === "text" && urlRe.test(item.text);
-        const meta = document.createElement("div");
-        meta.className = "meta";
-        meta.innerHTML = `<span>${fmtTime(item.at)}</span>${isUrl ? '<span class="tag">URL</span>' : ""}<span>${item.kind === "text" ? item.text.length + " Zeichen" : "Bild"}</span>`;
-        const body = document.createElement("div");
-        body.className = "body" + (isUrl ? " url" : "");
-        if (item.kind === "image") {
-          body.className = "";
-          const img = document.createElement("img");
-          img.src = item.dataUrl; img.alt = item.text;
-          body.append(img);
-        } else {
-          body.textContent = item.text;
-        }
-        const check = document.createElement("span");
-        check.className = "check"; check.textContent = "✓";
-        card.append(meta, body, check);
-        card.addEventListener("click", () => void copyBack(item));
-        el.append(card);
-      }
-    }
-    $("n-text").textContent = texts.length;
-    $("n-media").textContent = media.length;
-    $("count").textContent = `${items.length} / ${CAPACITY}`;
-    $("fill").style.width = `${Math.min(100, items.length / CAPACITY * 100)}%`;
-  }
-
-  $("search").addEventListener("input", (e) => { filter = e.target.value.trim().toLowerCase(); render(); });
-  $("search").addEventListener("keydown", (e) => {
-    if (e.key !== "Enter") return;
-    const visible = filter ? items.filter((i) => (i.text ?? "").toLowerCase().includes(filter)) : items;
-    if (visible[0]) void copyBack(visible[0]);
-  });
-  $("btn-clear").addEventListener("click", () => { items = []; save(); render(); });
-
-  const zone = $("paste-zone");
-  ["dragover", "dragenter"].forEach((t) => zone.addEventListener(t, (e) => { e.preventDefault(); zone.classList.add("drag"); }));
-  ["dragleave", "drop"].forEach((t) => zone.addEventListener(t, () => zone.classList.remove("drag")));
-  zone.addEventListener("drop", (e) => {
-    e.preventDefault();
-    const file = [...(e.dataTransfer?.files ?? [])].find((f) => f.type.startsWith("image/"));
-    if (file) void harvestImage(file);
-  });
-
-  load(); render();
-})();
-</script>
+<script src="app.js"></script>
 </body>
 </html>

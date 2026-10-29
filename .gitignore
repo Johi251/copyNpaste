@@ -6,3 +6,7 @@ src-tauri/gen/schemas/
 .DS_Store
 scripts/.webhook-*
 dist-delivery/
+
+0 copyNpaste - ZCode Conversation Share_files/
+PROJEKTSTATUS-*
+release-artifacts/

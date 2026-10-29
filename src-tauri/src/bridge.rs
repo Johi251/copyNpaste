@@ -52,7 +52,10 @@ pub fn extract_url(text: &str) -> Option<UrlMatch> {
     let host = caps.name("host")?.as_str().to_ascii_lowercase();
     Some(UrlMatch {
         url: t.to_string(),
-        is_github: host == "github.com" || host.ends_with(".github.com") || host == "github.io" || host.ends_with(".github.io"),
+        is_github: host == "github.com"
+            || host.ends_with(".github.com")
+            || host == "github.io"
+            || host.ends_with(".github.io"),
         is_local: host == "localhost" || host == "127.0.0.1",
     })
 }
@@ -67,12 +70,23 @@ pub fn dispatch_async(app: AppHandle, item_id: Uuid, url: String, is_github: boo
     let endpoint = cfg.bridge_url.clone();
     std::thread::Builder::new()
         .name("cnp-bridge-webhook".into())
-        .spawn(move || send_webhook(&app, item_id, &endpoint, &url, is_github, is_local))
+        .spawn(move || {
+            let anchor = crate::target::inspect().anchor;
+            send_webhook(&app, item_id, &endpoint, &url, is_github, is_local, anchor);
+        })
         .ok();
 }
 
 /// Blockierender Versand (läuft im eigenen Thread): POST {url, source, …}.
-fn send_webhook(app: &AppHandle, item_id: Uuid, endpoint: &str, url: &str, is_github: bool, is_local: bool) {
+fn send_webhook(
+    app: &AppHandle,
+    item_id: Uuid,
+    endpoint: &str,
+    url: &str,
+    is_github: bool,
+    is_local: bool,
+    anchor: Option<(f64, f64)>,
+) {
     let hint = if is_local {
         "local-address"
     } else if is_github {
@@ -100,29 +114,50 @@ fn send_webhook(app: &AppHandle, item_id: Uuid, endpoint: &str, url: &str, is_gi
             if (200..300).contains(&status) {
                 crate::logger::log_fmt(app, format!("Bridge: zugestellt (HTTP {status}) — {url}"));
                 state::set_bridge_state(app, item_id, BridgeState::Sent);
+                crate::feedback::show(app.clone(), anchor);
             } else {
-                crate::logger::log_fmt(app, format!("Bridge: Endpunkt antwortete HTTP {status} — {url}"));
+                crate::logger::log_fmt(
+                    app,
+                    format!("Bridge: Endpunkt antwortete HTTP {status} — {url}"),
+                );
                 state::set_bridge_state(app, item_id, BridgeState::EndpointOffline);
             }
         }
         Err(e) => {
             // Erwartbar, solange der Bookmarks Manager nicht läuft — kein Fehler im Clipboard-Fluss.
-            crate::logger::log_fmt(app, format!("Bridge: Endpunkt nicht erreichbar ({e}) — {url}"));
+            crate::logger::log_fmt(
+                app,
+                format!("Bridge: Endpunkt nicht erreichbar ({e}) — {url}"),
+            );
             state::set_bridge_state(app, item_id, BridgeState::EndpointOffline);
         }
     }
 }
 
 /// Sondierender Test aus dem Einstellungen-Dialog (synchron, mit eigenem Timeout).
-pub fn probe(app: &AppHandle) -> Result<String, String> {
-    let cfg = crate::config::get(app);
-    let endpoint = cfg.bridge_url.clone();
+pub fn validate_endpoint(endpoint: &str) -> Result<(), String> {
+    let url = tauri::Url::parse(endpoint).map_err(|_| "Ungültige Bridge-URL".to_string())?;
+    if !["http", "https"].contains(&url.scheme())
+        || url.host_str().is_none()
+        || !url.username().is_empty()
+        || url.password().is_some()
+    {
+        return Err("HTTP-/HTTPS-Adresse ohne Zugangsdaten erwartet".into());
+    }
+    Ok(())
+}
+
+pub fn probe(endpoint: &str) -> Result<String, String> {
+    validate_endpoint(endpoint)?;
     let body = json!({
         "probe": true,
         "source": "copyNpaste",
         "sentAt": chrono::Local::now().to_rfc3339(),
     });
-    match ureq::post(&endpoint).timeout(Duration::from_millis(2500)).send_json(body) {
+    match ureq::post(endpoint)
+        .timeout(Duration::from_millis(2500))
+        .send_json(body)
+    {
         Ok(resp) => Ok(format!("Endpunkt erreichbar — HTTP {}", resp.status())),
         Err(e) => Err(format!("Endpunkt nicht erreichbar: {e}")),
     }
@@ -161,7 +196,11 @@ mod tests {
 
     #[test]
     fn github_wird_als_solches_markiert() {
-        assert!(extract_url("https://github.com/Johi251/aKlik-Deployer").unwrap().is_github);
+        assert!(
+            extract_url("https://github.com/Johi251/aKlik-Deployer")
+                .unwrap()
+                .is_github
+        );
         assert!(!extract_url("https://webflow.com").unwrap().is_github);
     }
 
@@ -169,11 +208,11 @@ mod tests {
     fn keine_urls_werden_verworfen() {
         for bad in [
             "Hallo Welt",
-            "Schau mal auf github.com vorbei",   // kein Schema, Leerzeichen
-            "https://github.com und noch Text",  // Leerzeichen innerhalb
-            "ftp://files.example.com",           // falsches Schema
-            "https://intranet",                  // Ein-Wort-Host ohne Punkt und ohne localhost
-            "",                                  // leer
+            "Schau mal auf github.com vorbei", // kein Schema, Leerzeichen
+            "https://github.com und noch Text", // Leerzeichen innerhalb
+            "ftp://files.example.com",         // falsches Schema
+            "https://intranet",                // Ein-Wort-Host ohne Punkt und ohne localhost
+            "",                                // leer
         ] {
             assert!(extract_url(bad).is_none(), "sollte KEINE URL sein: {bad}");
         }

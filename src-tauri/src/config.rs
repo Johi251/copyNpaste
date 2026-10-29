@@ -88,45 +88,32 @@ pub fn save(app: &AppHandle, cfg: Config) -> Result<(), String> {
     if cfg.paste_shortcut.trim().is_empty() || cfg.toggle_shortcut.trim().is_empty() {
         return Err("Beide Shortcuts müssen gesetzt sein.".into());
     }
-    if cfg.paste_shortcut == cfg.toggle_shortcut {
-        return Err("Paste- und Toggle-Shortcut dürfen nicht identisch sein.".into());
+    crate::shortcuts::pair(&cfg)?;
+    if cfg.bridge_enabled {
+        crate::bridge::validate_endpoint(&cfg.bridge_url)?;
     }
-    if cfg.bridge_enabled && !cfg.bridge_url.starts_with("http") {
-        return Err("Bridge-URL muss mit http:// oder https:// beginnen.".into());
+    let st = app.state::<ConfigState>();
+    let mut current = st.0.write().unwrap();
+    let old = current.clone();
+    let added = crate::shortcuts::prepare(app, &cfg, Some(&old))?;
+    let saved = config_path(app)
+        .map_err(|e| e.to_string())
+        .and_then(|path| {
+            let json = serde_json::to_vec_pretty(&cfg).map_err(|e| e.to_string())?;
+            crate::storage::write_atomic(&path, &json).map_err(|e| e.to_string())
+        });
+    if let Err(e) = saved {
+        crate::shortcuts::rollback(app, &added);
+        return Err(format!("Konfiguration nicht gespeichert: {e}"));
     }
-
-    // Shortcut-Syntax vorab prüfen (Parse-Fehler früh melden, nicht erst beim Registrieren)
-    for s in [&cfg.paste_shortcut, &cfg.toggle_shortcut] {
-        if let Err(e) = crate::shortcuts::validate(s) {
-            return Err(format!("Shortcut „{s}“ ist ungültig: {e}"));
-        }
-    }
-
-    // Persistieren
-    let path = config_path(app).map_err(|e| e.to_string())?;
-    fs::write(&path, serde_json::to_string_pretty(&cfg).unwrap_or_default())
-        .map_err(|e| format!("Konfiguration konnte nicht gespeichert werden: {e}"))?;
-
-    // Aktivieren
+    *current = cfg.clone();
+    drop(current);
+    crate::shortcuts::retire(app, &old, &cfg);
     {
-        let st = app.state::<ConfigState>();
-        *st.0.write().unwrap() = cfg.clone();
+        let state = app.state::<crate::state::AppState>();
+        crate::state::trim_capacity(&mut state.magazine.lock().unwrap(), cfg.capacity);
     }
-
-    // Kapazität verkleinert? Magazin sofort kürzen.
-    {
-        let app_state = app.state::<crate::state::AppState>();
-        let mut mag = app_state.magazine.lock().unwrap();
-        while mag.len() > cfg.capacity {
-            mag.pop_front();
-        }
-    }
-
-    // Shortcuts neu registrieren
-    crate::shortcuts::register(app)
-        .map_err(|e| format!("Shortcuts konnten nicht neu registriert werden: {e}"))?;
-
-    crate::logger::log_fmt(app, format!("Konfiguration gespeichert: {cfg:?}"));
+    crate::logger::log(app, "Konfiguration gespeichert");
     crate::state::emit_update(app);
     Ok(())
 }

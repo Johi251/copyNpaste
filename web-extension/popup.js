@@ -27,15 +27,15 @@ async function saveStore() {
 /** Liest die Zwischenablage und stapelt sie (sofern der Inhalt neu ist). */
 async function harvestClipboard() {
   try {
-    const text = (await navigator.clipboard.readText() ?? "").trim();
-    if (!text || text.length > 100_000) return;
+    const text = (await navigator.clipboard.readText() ?? "");
+    if (!text.trim() || text.length > 100_000) return;
     if (items[0]?.text === text) return; // unverändert → kein neuer Platz
     items.unshift({ id: crypto.randomUUID(), text, at: Date.now() });
     items = items.slice(0, CAPACITY);
     await saveStore();
     render();
   } catch {
-    // Lese-Rechte verweigert oder leer — still ignorieren, UI bleibt nutzbar.
+    document.getElementById("hint").textContent = "Zwischenablage konnte nicht gelesen werden. Bitte Rechte und Browserfokus prüfen.";
   }
 }
 
@@ -43,19 +43,12 @@ async function harvestClipboard() {
 async function copyBack(item) {
   try {
     await navigator.clipboard.writeText(item.text);
-    flashCopied(item.id);
+    items = items.filter(i => i.id !== item.id);
+    await saveStore();
+    render();
   } catch {
-    /* ignoriert */
+    document.getElementById("hint").textContent = "Kopieren fehlgeschlagen; der Eintrag bleibt erhalten.";
   }
-}
-
-function flashCopied(id) {
-  for (const el of listEl.querySelectorAll(".item")) {
-    el.classList.toggle("copied", el.dataset.id === id);
-  }
-  setTimeout(() => {
-    for (const el of listEl.querySelectorAll(".item.copied")) el.classList.remove("copied");
-  }, 900);
 }
 
 function fmtTime(ts) {
@@ -120,11 +113,13 @@ document.getElementById("clear").addEventListener("click", async () => {
   render();
 });
 
+document.getElementById("read").addEventListener("click", () => void harvestClipboard());
+
 // ─── Start ────────────────────────────────────────────────────────────────
 (async () => {
   await loadStore();
   countEl.textContent = `${items.length} / ${CAPACITY}`;
   render();
   searchEl.focus();
-  await harvestClipboard();
+
 })();

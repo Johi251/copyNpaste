@@ -1,46 +1,95 @@
-//! Registrierung der globalen Shortcuts (Reverse-Paste + Fenster-Toggle).
-//! Shortcuts sind konfigurierbar; `register` kann jederzeit erneut aufgerufen
-//! werden (hebt alte Registrierungen zuerst auf).
-
+//! Neue Belegungen zuerst reservieren; alte Shortcuts bleiben bei Fehlern erhalten.
+use crate::{
+    config::{self, Config},
+    paste,
+};
 use tauri::AppHandle;
-use tauri_plugin_global_shortcut::GlobalShortcutExt;
+use tauri_plugin_global_shortcut::{GlobalShortcutExt, Shortcut, ShortcutEvent, ShortcutState};
 
-use crate::{config, logger, paste};
-
-/// Registriert beide Shortcuts aus der aktuellen Konfiguration neu.
-pub fn register(app: &AppHandle) -> Result<(), Box<dyn std::error::Error>> {
-    let gs = app.global_shortcut();
-    let _ = gs.unregister_all();
-
-    let cfg = config::get(app);
-
-    let app_for_paste = app.clone();
-    let paste_sc = cfg.paste_shortcut.clone();
-    gs.on_shortcut(paste_sc.as_str(), move |_app, _shortcut, event| {
-        use tauri_plugin_global_shortcut::ShortcutState;
-        if event.state == ShortcutState::Pressed {
-            paste::reverse_paste_async(app_for_paste.clone());
-        }
-    })?;
-
-    let toggle_sc = cfg.toggle_shortcut.clone();
-    gs.on_shortcut(toggle_sc.as_str(), move |app, _shortcut, event| {
-        use tauri_plugin_global_shortcut::ShortcutState;
-        if event.state == ShortcutState::Pressed {
-            crate::toggle_window(app);
-        }
-    })?;
-
-    logger::log_fmt(
-        app,
-        format!("Shortcuts registriert: {} (Reverse-Paste), {} (Magazin-Toggle)", paste_sc, toggle_sc),
-    );
-    Ok(())
+pub fn pair(cfg: &Config) -> Result<[Shortcut; 2], String> {
+    let paste = cfg
+        .paste_shortcut
+        .parse::<Shortcut>()
+        .map_err(|e| e.to_string())?;
+    let toggle = cfg
+        .toggle_shortcut
+        .parse::<Shortcut>()
+        .map_err(|e| e.to_string())?;
+    if paste == toggle {
+        return Err("Paste- und Toggle-Shortcut dürfen nicht identisch sein.".into());
+    }
+    Ok([paste, toggle])
 }
 
-/// Prüft einen Shortcut-String, ohne ihn zu registrieren.
-pub fn validate(spec: &str) -> Result<(), tauri_plugin_global_shortcut::Error> {
-    use tauri_plugin_global_shortcut::Shortcut;
-    let _parsed: Shortcut = spec.parse()?;
-    Ok(())
+fn handle(app: &AppHandle, shortcut: &Shortcut, event: ShortcutEvent) {
+    if event.state != ShortcutState::Released {
+        return;
+    }
+    let Ok([paste_sc, toggle_sc]) = pair(&config::get(app)) else {
+        return;
+    };
+    if *shortcut == paste_sc {
+        paste::reverse_paste_async(app.clone());
+    } else if *shortcut == toggle_sc {
+        crate::toggle_window(app);
+    }
+}
+
+pub fn prepare(
+    app: &AppHandle,
+    cfg: &Config,
+    old: Option<&Config>,
+) -> Result<Vec<Shortcut>, String> {
+    let old = old
+        .map(pair)
+        .transpose()?
+        .map(Vec::from)
+        .unwrap_or_default();
+    let mut added = Vec::new();
+    for shortcut in pair(cfg)? {
+        if old.contains(&shortcut) {
+            continue;
+        }
+        if let Err(e) = app.global_shortcut().on_shortcut(shortcut, handle) {
+            rollback(app, &added);
+            return Err(format!("Shortcut konnte nicht registriert werden: {e}"));
+        }
+        added.push(shortcut);
+    }
+    Ok(added)
+}
+
+pub fn rollback(app: &AppHandle, added: &[Shortcut]) {
+    for shortcut in added {
+        let _ = app.global_shortcut().unregister(*shortcut);
+    }
+}
+
+pub fn retire(app: &AppHandle, old: &Config, cfg: &Config) {
+    if let (Ok(old), Ok(new)) = (pair(old), pair(cfg)) {
+        for shortcut in old {
+            if !new.contains(&shortcut) {
+                let _ = app.global_shortcut().unregister(shortcut);
+            }
+        }
+    }
+}
+
+pub fn register(app: &AppHandle) -> Result<(), String> {
+    prepare(app, &config::get(app), None).map(|_| ())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[test]
+    fn gleiche_tasten_trotz_anderer_schreibweise_abgewiesen() {
+        let cfg = Config {
+            paste_shortcut: "Alt+V".into(),
+            toggle_shortcut: "alt+v".into(),
+            ..Config::default()
+        };
+        assert!(pair(&cfg).is_err());
+        assert!(pair(&Config::default()).is_ok());
+    }
 }

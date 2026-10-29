@@ -59,7 +59,7 @@ export async function testBridge(): Promise<void> {
   out.textContent = "Teste …";
   out.className = "mt-2 text-[11px] text-neutral-500";
   try {
-    const msg = await invoke<string>("test_bridge");
+    const msg = await invoke<string>("test_bridge", { endpoint: $<HTMLInputElement>("set-bridge-url").value.trim() });
     out.textContent = `✓ ${msg}`;
     out.className = "mt-2 text-[11px] text-teal-400";
   } catch (e) {

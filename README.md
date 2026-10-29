@@ -1,183 +1,74 @@
-# copyNpaste — Das Clipboard-Magazin
+# copyNpaste 1.2.0 — Clipboard-Magazin
 
-> **Globales Betriebssystem-Zwischenablagen-Magazin mit Reverse-Paste.**
-> Tauri 2 Desktop-App (Windows · macOS · Linux) von johan — Teil des aKlik-Ökosystems
-> (App C laut `C:\Users\johan\MASTER_SETUP\00 PROJEKTE\PROJECT_MINDSHARE.md`).
+Text, Code, Bilder und Dateien sammeln und mit **Alt+V** rückwärts einfügen. Native Tauri-2-App für Windows, Mac Intel, Mac Apple Silicon und Linux. Dazu eine Web-App und ein Browser-Add-on.
 
-![Akzentfarbe](https://img.shields.io/badge/Akzent-T%C3%BCrkis--Jade_%230D9488-0D9488) ![Plattform](https://img.shields.io/badge/Plattform-Windows_%C2%B7_macOS_%C2%B7_Linux-neutral) ![Stack](https://img.shields.io/badge/Stack-Tauri_2_%C2%B7_Rust_%C2%B7_TypeScript_%C2%B7_Tailwind-0D9488)
+- [Downloads und Gesamt-ZIP](https://github.com/Johi251/copyNpaste/releases/latest)
+- [Web-App](https://johi251.github.io/copyNpaste/)
+- [Visuelles Handbuch und Workflows](https://johi251.github.io/copyNpaste/manual.html)
+- [Build- und Testläufe](https://github.com/Johi251/copyNpaste/actions)
 
----
+## Desktop benutzen
 
-## Was copyNpaste tut
+1. Windows-Setup installieren oder `copynpaste.exe` starten. Auf dem Mac das passende DMG öffnen und die App in Programme ziehen. Auf Linux das DEB installieren.
+2. Die App läuft im System-Tray. Kopiere Text, ein Bild oder Dateien; das Magazin hat standardmäßig 25 Plätze (einstellbar 10–100).
+3. **Alt+V** sendet das jüngste passende ungepinnte Element an das aktive Zielfenster. Erst nach erfolgreichem Clipboard-Schreiben und Tastensignal wird es entnommen. **Alt+Shift+V** öffnet das Magazin.
+4. Suche nach vollständigem Text, füge eine bestimmte Karte mit Klick/Enter ein oder pinne sie für später an. Pins überleben automatische Verdrängung und Kapazitätsänderungen. Gezieltes Einfügen und „Leeren“ schließen Pins ein.
+5. Schließen/Esc versteckt das Fenster. Beenden erfolgt über das Tray-Menü und schreibt den neuesten Stand.
 
-copyNpaste läuft als **schlanker Hintergrund-Dienst im System-Tray** und verwandelt die
-Zwischenablage in ein **Magazin** (Stack):
+Beide globalen Shortcuts sind einstellbar und reagieren nach dem Loslassen der Tasten. Ein Registrierungsfehler lässt die bisherigen Einstellungen erhalten.
 
-1. **Kopieren ohne Limit** — jede Kopieraktion (`Strg+C` / `Cmd+C`, Rechtsklick → Kopieren,
-   Drag&Drop-Kopien) wird im Hintergrund erfasst. Text, Bilder und Dateien wandern
-   nacheinander ins Magazin (Standard: **25 Plätze**, konfigurierbar 10–100).
-2. **Reverse-Paste mit `Alt+V`** — fügt das **zuletzt kopierte** Element in das fokussierte
-   Zielfeld ein **und entfernt es sofort aus dem Magazin**. Das vorletzte Element rückt in
-   die Paste-Bereitschaft. Mehrfach `Alt+V` = rückwärts durch den Stapel pumpen.
-3. **Zwei-Spalten-Magazin** (`Alt+Shift+V` oder Tray-Klick) — links scrollbare Texte/Code,
-   rechts scrollbare Bilder/Dateien. Klick oder `Enter` auf eine Karte fügt genau dieses
-   Element ein; `Entf` wirft es weg.
-4. **Localhost-Smart-Bridge** — kopierte echte URLs (insbesondere GitHub/Software-Links)
-   werden per Regex erkannt und **vollautomatisch und asynchron** als Webhook an das
-   „Today's Hunt"-Modul des *Bookmarks Dynamic Managers* geschickt. Der Clipboard-Fluss wird
-   dabei zu **0 %** blockiert. Unter dem Link-Anfang erscheint für ~250 ms eine
-   Lottie-inspirierte **Haken-Animation (✓)** als visuelles Erfolgs-Feedback — ohne Pop-up.
+## Zielfeld und Feedback
 
-## Shortcuts
+Windows liest ausschließlich Accessibility-Metadaten des fokussierten Elements. Bei erkannten einfachen Textfeldern werden Bilder/Dateien übersprungen; sie bleiben im Magazin. Auf macOS werden einfache AX-Textfelder erkannt. Rich-Text-Editoren und Anwendungen ohne passende Metadaten verwenden die normale Stapelreihenfolge. Linux hat noch keine AT-SPI-Zielfelderkennung. Die endgültige Annahme eines Formats entscheidet die Zielanwendung; ein gesendetes Tastensignal ist keine universelle Empfangsbestätigung.
 
-| Aktion | Standard | freely konfigurierbar |
-|---|---|---|
-| Reverse-Paste (Spitze einfügen + entfernen) | `Alt+V` | ✔ Einstellungen |
-| Magazin-Fenster zeigen/verstecken | `Alt+Shift+V` | ✔ Einstellungen |
-| Karte einfügen | Klick / `Enter` (Fokus auf Karte) | — |
-| Karte entfernen | `Entf` (Fokus auf Karte) | — |
-| Fenster schließen (läuft im Tray weiter) | `Esc` / `X` | — |
-| Magazin leeren | Button „Leeren" | — |
+Reine HTTP-/HTTPS-URLs gehen in einem eigenen Thread an `http://127.0.0.1:9911/api/todays-hunt` (2,5 Sekunden Timeout, konfigurierbar/abschaltbar). Dafür muss die native App **Bookmarks Dynamic Manager** laufen. Erst nach HTTP-Erfolg erscheint ein fokusfreier Haken für ungefähr 280 ms: Windows nutzt die Position der Auswahl, sofern die Quelle sie liefert; sonst erscheint er am Mauszeiger. Die Anzeige in der Magazin-Karte bleibt zusätzlich vorhanden.
 
-> Shortcuts werden **global** registriert — sie funktionieren in jeder Anwendung.
+Webhook-Vertrag:
 
-## Installation
-
-### Voraussetzungen (Entwicklung)
-
-- **Node.js ≥ 20** + npm — <https://nodejs.org>
-- **Rust ≥ 1.90** (rustup) — <https://rustup.rs>
-- **Windows:** „Desktop development with C++" (VS 2022 Build Tools) + WebView2 Runtime (Win 11 vorinstalliert)
-- **macOS:** Xcode Command Line Tools (`xcode-select --install`)
-- **Linux:** `libxdo-dev` (enigo), X11/XWayland (Clipboard-Watching unter Wayland ist eingeschränkt), `libwebkit2gtk-4.1-dev libgtk-3-dev libayatana-appindicator3-dev` (Tauri)
-
-```bash
-npm install          # Abhängigkeiten
-npm run tauri dev    # Entwicklung mit Hot-Reload
+```json
+{"url":"https://github.com/tauri-apps/tauri","source":"copyNpaste","capturedAt":"2026-10-29T12:00:00+01:00","isGithub":true,"hint":"software-repository"}
 ```
 
-### Produktions-Build
+„Endpunkt testen“ sendet `{ "probe": true, "source": "copyNpaste" }` an die eingegebene Adresse. Ist der Empfänger offline, bleibt die URL im Magazin. Es gibt keinen automatischen erneuten Versand. Alte URL-Einträge ohne gespeicherte Zustellbestätigung erhalten keinen erfundenen Erfolgsstatus.
 
-```bash
-npm run tauri build          # Windows: NSIS-Installer + eigenständige .exe
-npm run tauri build -- --no-bundle   # nur die rohe .exe (schneller)
+## Browser und Web
+
+Das Chromium-ZIP entpacken und als entpackte Erweiterung laden. Firefox erhält ein eigenes Manifest für temporäres Laden über `about:debugging`; eine dauerhafte Installation verlangt Mozilla-Signierung. Textkopien auf normalen Webseiten werden automatisch erfasst. **Alt+Shift+Y** übernimmt die Zwischenablage über einen unterstützten Dokumentkontext. Das Popup erlaubt Suche und Entnahme; nach dem Zurückkopieren im Ziel **Strg+V** drücken.
+
+Die Web-App nimmt Text/Bilder per Button, Strg+V außerhalb der Suchfelder oder Bild-Drop auf. **Alt+V innerhalb der Seite** oder ein Kartenklick kopiert und entnimmt ein Element. Danach im Zielfeld Strg+V drücken. IndexedDB speichert Text und Bilder; vorhandene Textbestände der alten Version werden übernommen. Fehler beim Clipboard-Zugriff oder Speichern werden angezeigt.
+
+Browser, Web und Desktop besitzen getrennte lokale Magazine. Browser können keine systemweiten Paste-Tastensignale in fremde Anwendungen senden. Die native Smart-Bridge und Dateilisten gehören zur Desktop-Ausgabe. Für Web-Dateien im Gesamt-ZIP einen lokalen HTTP-Server verwenden, beispielsweise `python -m http.server --directory Web-App 8080`.
+
+## Datenschutz und Grenzen
+
+- Magazin und Konfiguration werden lokal **unverschlüsselt** gespeichert. Die Bridge übermittelt erkannte URLs an den eingestellten Endpunkt.
+- Windows-Ausschlussmarker von Passwortmanagern werden beachtet. Geheimnisse ohne Marker können trotzdem erfasst werden. Die Browser-Erweiterung erfasst keine Textauswahl aus Passwortfeldern; sie kennt keine Betriebssystem-Marker.
+- Pro Eintrag maximal 5 MiB Text beziehungsweise 20 MiB PNG. Alle akzeptierten Bilder werden gespeichert. Dateien werden als Pfade gespeichert, nicht dupliziert.
+- Atomare Hintergrundspeicherung und abschließendes Speichern beim Beenden. Bei beschädigter JSON-Datei stoppt der Start, statt den Bestand zu überschreiben. Ein abrupter Prozessabbruch kann noch nicht gespeicherte letzte Änderungen verlieren.
+- Windows benötigt WebView2; macOS benötigt Bedienungshilfen-Rechte für Tastensimulation. Linux: X11/XWayland. Rein natives Wayland wird nicht als unterstützt ausgegeben.
+- Die Builds sind nicht kostenpflichtig codesigniert/notarisiert. Eine erfolgreiche CI-Kompilierung ist keine vollständige Installer-, Gatekeeper- oder Fensterabnahme.
+
+Unter Windows liegen `magazine.json`, `config.json` und `logs/copynpaste.log` normalerweise unter `%APPDATA%/de.johan.copynpaste`. Andere Plattformen verwenden das jeweilige Tauri-Datenverzeichnis.
+
+## Entwicklung und Prüfung
+
+Benötigt: Node 20+, Bun, Rust 1.90+; Windows C++ Build Tools, macOS Xcode Command Line Tools beziehungsweise Linux GTK/WebKit/X11-Bibliotheken.
+
+```sh
+bun install --frozen-lockfile
+npm run check
+npm test
+cargo test --locked --manifest-path src-tauri/Cargo.toml
+npm run tauri dev
+npm run tauri build -- --bundles nsis
 ```
 
-Ergebnis unter `src-tauri\target\release\`:
+Die GitHub-Pipeline prüft TypeScript, JavaScript-Regressionen und Rust-Tests auf vier nativen Plattformen. Alle müssen erfolgreich sein, bevor `scripts/package-release.py` das Gesamt-ZIP aus echten EXE-/DMG-/DEB-Artefakten, beiden Add-on-Varianten, Web-App, Handbuch und Quellcode erzeugt. SHA256-Prüfsummen liegen daneben. Der Release-Upload erfolgt erst nach erfolgreicher Prüfung.
 
-| Plattform | Artefakt |
-|---|---|
-| Windows | `copyNpaste.exe` + `bundle\nsis\copyNpaste_1.0.0_x64-setup.exe` |
-| macOS | `copyNpaste.app` (+ `.dmg` via `--bundles dmg`) |
-| Linux | `bundle\deb\copyNpaste_1.0.0_amd64.deb` |
+Plattform-Buildwrapper liegen in `build-scripts/`; macOS verwendet `--bundles app,dmg`, Linux `--bundles deb`. Der Windows-Wrapper baut NSIS. Die JavaScript-Tests führen den tatsächlichen Web-/Add-on-Code isoliert aus; sie ersetzen keinen echten Browserlauf.
 
-Bequeme Wrapper: `build-scripts\build-windows.cmd`, `build-macos.sh`, `build-linux.sh`.
-Für alle drei Plattformen automatisch: `.github/workflows/build.yml` (erzeugt Build-Artefakte — **ohne** Veröffentlichung).
+## Verwandte Tools und Anforderungsquelle
 
-### Benutzung
+[Bookmarks Dynamic Manager](https://johi251.github.io/bookmarks-dynamic-manager/) übernimmt URLs in Today's Hunt. [aKlik-Deployer](https://aklik-deployer.pages.dev) untersucht Software-Repositories und Deployment-Wege. Die Werkzeuge bleiben eigenständige Anwendungen im aKlik-Ökosystem.
 
-1. copyNpaste starten — es erscheint **als Icon im System-Tray** (Fenster bleibt zu).
-2. Irgendwo `Strg+C` ausführen — Elemente stapeln sich im Magazin.
-3. `Alt+V` im Ziel-Feld drücken — Spitze wird eingefügt und entfernt. Wiederholen = rückwärts pumpen.
-4. `Alt+Shift+V` oder Tray-Linksklick — Magazin-Fenster öffnen.
-
-**macOS-Hinweis:** Für den simulierten `Cmd+V` muss der App einmalig die Berechtigung
-*Systemeinstellungen → Datenschutz & Sicherheit → Bedrohungshilfe* (Accessibility) erteilt werden.
-
-**Linux-Hinweis:** Unter reinem Wayland funktionieren globale Clipboard-Watcher und
-Tastensimulation nur eingeschränkt — X11/XWayland-Sitzung empfohlen.
-
-## Validierung der Tastatur-Shortcuts (Checkliste)
-
-| # | Test | Erwartung |
-|---|---|---|
-| 1 | App starten, `Strg+C` auf Text | Log `<AppData>\logs\copynpaste.log` zeigt `Erfasst: Text (…)` |
-| 2 | `Alt+V` im Editor | Letzter Text wird eingefügt; Karte verschwindet; neue Spitze bekommt „Nächster Paste" |
-| 3 | 3× `Strg+C` (Text, Text, Screenshot) | Linke Spalte: 2 Karten · rechte Spalte: 1 Karte |
-| 4 | 3× `Alt+V` | Inhalte erscheinen in umgekehrter Reihenfolge (Screenshot, Text2, Text1) |
-| 5 | `Strg+C` auf `https://github.com/…` | Karte mit URL + Haken ✓ „GitHub → Today's Hunt" (Bridge-Stub: `node scripts/test-webhook.mjs`) |
-| 6 | Bridge aus, URL kopieren | Karte zeigt „Bridge offline" — Magazin unberührt, kein Verzögern |
-| 7 | Dateien im Explorer `Strg+C`, `Alt+V` | Dateiliste wird als Kopie/Einfügen übertragen |
-| 8 | `Alt+Shift+V` | Fenster zeigt/versteckt sich; Tray-Linksklick ebenfalls |
-| 9 | X / `Esc` | Fenster zu, Prozess bleibt im Tray aktiv |
-| 10 | Shortcut ändern (z. B. `ctrl+shift+v`) | Alt+V reagiert nicht mehr, neuer Shortcut pastet |
-
-Nachweis-Log: `%APPDATA%\de.johan.copynpaste\logs\copyNpaste.log`
-(config: `%APPDATA%\de.johan.copynpaste\config.json`).
-
-## Die Smart-Bridge-Schnittstelle (Vertrag)
-
-Kopiert ein Element eine **exakte URL** (Regex: `^https?://Host[ischer Teil]$`, keine
-Leerzeichen, ≤ 2048 Zeichen), feuert copyNpaste **asynchron**:
-
-```http
-POST http://127.0.0.1:9911/api/todays-hunt
-Content-Type: application/json
-
-{
-  "url": "https://github.com/tauri-apps/tauri",
-  "source": "copyNpaste",
-  "capturedAt": "2026-10-26T14:32:05.123+02:00",
-  "isGithub": true,
-  "hint": "software-repository"      // bzw. "general-url"
-}
-```
-
-- Endpunkt + Ein/Aus sind **konfigurierbar** (Einstellungen → Localhost-Smart-Bridge; Button „Endpunkt testen").
-- Timeout 2,5 s, fire-and-forget im eigenen Thread — der Bookmarks Manager kann fehlen,
-  ohne den Clipboard-Fluss auch nur zu berühren (Status dann „Bridge offline" in der Karte).
-- Test-Empfänger für Entwicklung: `node scripts/test-webhook.mjs` (schreibt `scripts/.webhook-received.jsonl`).
-
-## Architektur
-
-```
-copyNpaste/
-├─ index.html                  UI-Gerüst (Titelzeile, Toolbar, zwei Spalten)
-├─ src/                        Frontend (Vanilla-TypeScript + Tailwind CSS 4)
-│  ├─ main.ts                  Bootstrap, Events (magazine-changed), Aktionen
-│  ├─ ui.ts                    Karten, Spalten, Haken-Animation (250 ms SVG-Strichzeichnung)
-│  ├─ settings.ts              Einstellungen-Dialog inkl. Bridge-Test
-│  └─ styles.css               Glas-Dark-Theme (#0b0c0e), backdrop-blur, Teal #0D9488
-├─ src-tauri/src/              Rust-Backend
-│  ├─ monitor.rs               OS-Clipboard-Watcher (clipboard-rs) als Dauergthread
-│  ├─ state.rs                 Magazin (VecDeque), Fingerprints, Selbst-Reflektions-Schutz
-│  ├─ paste.rs                 Reverse-Paste: Clipboard schreiben + Strg+V/Cmd+V (enigo)
-│  ├─ bridge.rs                URL-Regex + asynchroner Webhook (ureq, 2,5-s-Timeout)
-│  ├─ config.rs                config.json: Kapazität, Shortcuts, Bridge, Effekte
-│  ├─ shortcuts.rs             globale Shortcuts (tauri-plugin-global-shortcut)
-│  ├─ tray.rs                  Tray-Icon + Menü (Öffnen / Reverse Paste / Beenden)
-│  ├─ logger.rs                Nachweis-Log <AppData>/logs/copynpaste.log
-│  └─ commands.rs              IPC: magazine_state, paste_item, delete_item, …
-├─ assets/logo.svg             Marken-Logo (Magazin-Stapel + Haken, #0D9488)
-├─ scripts/                    gen-icon.mjs · test-webhook.mjs
-└─ build-scripts/              Plattform-Wrapper
-```
-
-### Technische Entscheidungen (ehrlich dokumentiert)
-
-- **„Globales Abfangen von Strg+C"** ist als **Clipboard-Change-Watcher** umgesetzt: Nicht die
-  Taste wird abgefangen, sondern das *Ergebnis jeder Kopieraktion* wird beobachtet. Das ist
-  zuverlässiger (erfasst auch Rechtsklick → Kopieren) und plattformübergreifend stabil.
-- **„Intelligente Zielfeld-Erkennung":** Ein Hintergrund-Prozess darf den Inhalt fremder
-  Fenster nicht inspizieren (OS-Sicherheitsmodell von Windows/macOS/Linux). copyNpaste löst
-  das so: Jedes Element behält seinen **nativem Format** (Text → Text, Bild → Bitmap,
-  Dateien → Dateiliste) und fügt exakt dieses ein; das Zielfeld akzeptiert oder ignoriert es
-  wie bei einem manischen `Strg+V`. Über die Zwei-Spalten-Ansicht wählt man bewusst Text
-  **oder** Bild/Datei — das ist die verlässlichste „Intelligenz" unter OS-Restriktionen.
-- **Haken-Animation:** Das Zeichnen *in fremden Fenstern* unter dem kopierten Link ist einem
-  Hintergrund-Dienst vom OS nicht gestattet. Die 250-ms-Strichzeichnung (✓) erscheint
-  daher **in der Magazin-Karte direkt unter dem Link-Anfang** — exakt dem Sketch aus dem
-  Projektauftrag folgend, ohne nerviges Pop-up.
-
-## Verwandte Projekte
-
-- **aKlik-Deployer** (App A) — Infrastruktur-/Deployment-Scanner · Akzent: Cobalt `#1E40AF`
-- **Bookmarks Dynamic Manager** (App B) — KI-Wissensdatenbank für Lesezeichen · Akzent: Spicy Orange `#EA580C`
-- **copyNpaste** (App C, dieses Repo) — Clipboard-Magazin · Akzent: Türkis-Jade `#0D9488`
-
-Alle drei kommunizieren über Localhost-Webhooks; copyNpaste → Bookmarks (Today's Hunt) ist
-die erste implementierte Brücke.
-
----
-
-*Status: v1.0.0 · Build & Tests: siehe Abschnitt „Validierung" · Maintainer: johan*
+Der [freigegebene ZCode-Verlauf](https://zcode.z.ai/share/luoLzbm_iVjCnB4u3dLxoetcxlZdlD1K) verlangt ausdrücklich Windows, Mac, Browser-Add-on, Web-App auf GitHub und ein Gesamt-ZIP. Das [Handbuch](docs/HANDBUCH.md) dokumentiert Bedienung, Workflows, Grenzen und ein Storyboard für das später gewünschte Promo-Video. Bezahlmodelle und Testzeitbegrenzungen wurden lediglich als Ideen diskutiert und nicht eingebaut.
