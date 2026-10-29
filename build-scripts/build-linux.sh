@@ -5,7 +5,7 @@
 #                       libayatana-appindicator3-dev librsvg2-dev
 set -euo pipefail
 cd "$(dirname "$0")/.."
-echo "=== copyNpaste: npm install ==="
+echo "=== copyNpaste: bun install ==="
 bun install --frozen-lockfile
 echo "=== copyNpaste: tauri build (Linux) ==="
 npm run tauri build -- --bundles deb

@@ -3,7 +3,7 @@ REM copyNpaste — Windows-Produktionsbuild (NSIS-Installer + eigenstaendige EXE
 REM Voraussetzungen: Node.js, Rust (MSVC-Toolchain), WebView2 Runtime
 setlocal
 cd /d "%~dp0.."
-echo === copyNpaste: npm install ===
+echo === copyNpaste: bun install ===
 call bun install --frozen-lockfile || goto :err
 echo === copyNpaste: tauri build ===
 call npm run tauri build || goto :err
