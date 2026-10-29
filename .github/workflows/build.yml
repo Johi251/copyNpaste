@@ -72,6 +72,14 @@ jobs:
       - name: Build
         run: npm run tauri build -- ${{ matrix.args }}
 
+      - name: Native startup
+        if: runner.os != 'Linux'
+        run: python scripts/smoke-native.py
+
+      - name: Native startup (Linux)
+        if: runner.os == 'Linux'
+        run: dbus-run-session -- xvfb-run -a python3 scripts/smoke-native.py
+
       - name: Artefakte hochladen
         uses: actions/upload-artifact@v4
         with:
