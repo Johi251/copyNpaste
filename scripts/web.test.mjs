@@ -31,6 +31,21 @@ test("Add-on meldet Clipboard-Fehler, ohne Magazin zu ändern", async () => {
   assert.equal(badge, "!");
 });
 
+test("Gleichzeitige Aufnahme und Entnahme überschreiben keine fremden Einträge", async () => {
+  let handler, magazine = [{ id: "old", text: "old" }];
+  const chrome = {
+    runtime: { onMessage: { addListener(fn) { handler = fn; } } },
+    commands: { onCommand: { addListener() {} } },
+    storage: { local: { get: async () => ({ magazine }), set: async value => { magazine = value.magazine; } } },
+  };
+  runInNewContext(readFileSync("web-extension/background.js", "utf8"), { chrome, navigator: {}, crypto: { randomUUID: () => "new" } });
+  const send = message => new Promise(resolve => handler({ target: "magazine", ...message }, {}, resolve));
+  const results = await Promise.all([send({ type: "capture", text: "new" }), send({ type: "consume", id: "old" })]);
+  assert.ok(results.every(result => result.ok));
+  assert.equal(magazine.length, 1);
+  assert.equal(magazine[0].id, "new");
+});
+
 test("Web-App: Originaltext und Entnahme nur nach Clipboard-Erfolg", async () => {
   const elements = new Map();
   const node = () => ({ textContent: "", innerHTML: "", value: "", style: {}, dataset: {}, children: [],

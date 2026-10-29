@@ -10,3 +10,5 @@ dist-delivery/
 0 copyNpaste - ZCode Conversation Share_files/
 PROJEKTSTATUS-*
 release-artifacts/
+__pycache__/
+*.pyc

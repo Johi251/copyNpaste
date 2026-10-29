@@ -1,19 +1,28 @@
 /** Clipboard-Zugriff gehört in ein Dokument, nicht in einen Service Worker. */
 const CAPACITY = 25;
 let pending = Promise.resolve();
-function storeText(text) {
+function updateMagazine(change) {
   pending = pending.catch(() => {}).then(async () => {
-    if (typeof text !== "string" || !text.trim() || text.length > 100_000) return;
     const { magazine = [] } = await chrome.storage.local.get("magazine");
-    if (magazine[0]?.text === text) return;
-    magazine.unshift({ id: crypto.randomUUID(), text, at: Date.now() });
-    await chrome.storage.local.set({ magazine: magazine.slice(0, CAPACITY) });
+    if (!Array.isArray(magazine)) throw new Error("Magazin ist beschädigt; Bestand bleibt erhalten");
+    await chrome.storage.local.set({ magazine: change(magazine).slice(0, CAPACITY) });
   });
   return pending;
 }
+function storeText(text) {
+  if (typeof text !== "string" || !text.trim() || text.length > 100_000) return Promise.resolve();
+  return updateMagazine(magazine => magazine[0]?.text === text ? magazine :
+    [{ id: crypto.randomUUID(), text, at: Date.now() }, ...magazine]);
+}
 chrome.runtime.onMessage.addListener((message, _sender, respond) => {
-  if (message?.target !== "magazine" || message.type !== "capture") return;
-  storeText(message.text).then(() => respond({ ok: true }), e => respond({ error: String(e) }));
+  if (message?.target !== "magazine") return;
+  let result;
+  if (message.type === "capture") result = storeText(message.text);
+  else if (message.type === "consume" && typeof message.id === "string")
+    result = updateMagazine(magazine => magazine.filter(item => item.id !== message.id));
+  else if (message.type === "clear") result = updateMagazine(() => []);
+  else return;
+  result.then(() => respond({ ok: true }), e => respond({ error: String(e) }));
   return true;
 });
 chrome.commands.onCommand.addListener(async command => {

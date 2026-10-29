@@ -1,7 +1,6 @@
 /**
  * copyNpaste Browser-Add-on — Popup-Logik.
- * Beim Öffnen wird die aktuelle Zwischenablage gelesen und (sofern neu)
- * oben ins Magazin gestapelt. Klick auf ein Element kopiert es zurück.
+ * Alle Änderungen laufen über den gemeinsamen Hintergrund-Schreibpfad.
  */
 
 const CAPACITY = 25;
@@ -16,12 +15,19 @@ let filter = "";
 
 async function loadStore() {
   const { magazine = [] } = await chrome.storage.local.get("magazine");
+  if (!Array.isArray(magazine) || magazine.some(i => !i || typeof i.id !== "string" || typeof i.text !== "string")) {
+    throw new Error("Gespeichertes Magazin ist beschädigt; der Bestand bleibt erhalten.");
+  }
   items = magazine;
 }
 
-async function saveStore() {
-  await chrome.storage.local.set({ magazine: items.slice(0, CAPACITY) });
+async function changeStore(message) {
+  const result = await chrome.runtime.sendMessage({ target: "magazine", ...message });
+  if (result?.error) throw new Error(result.error);
+  if (!result?.ok) throw new Error("Magazin nicht erreichbar");
+  await loadStore();
   countEl.textContent = `${items.length} / ${CAPACITY}`;
+  render();
 }
 
 /** Liest die Zwischenablage und stapelt sie (sofern der Inhalt neu ist). */
@@ -30,10 +36,7 @@ async function harvestClipboard() {
     const text = (await navigator.clipboard.readText() ?? "");
     if (!text.trim() || text.length > 100_000) return;
     if (items[0]?.text === text) return; // unverändert → kein neuer Platz
-    items.unshift({ id: crypto.randomUUID(), text, at: Date.now() });
-    items = items.slice(0, CAPACITY);
-    await saveStore();
-    render();
+    await changeStore({ type: "capture", text });
   } catch {
     document.getElementById("hint").textContent = "Zwischenablage konnte nicht gelesen werden. Bitte Rechte und Browserfokus prüfen.";
   }
@@ -43,9 +46,7 @@ async function harvestClipboard() {
 async function copyBack(item) {
   try {
     await navigator.clipboard.writeText(item.text);
-    items = items.filter(i => i.id !== item.id);
-    await saveStore();
-    render();
+    await changeStore({ type: "consume", id: item.id });
   } catch {
     document.getElementById("hint").textContent = "Kopieren fehlgeschlagen; der Eintrag bleibt erhalten.";
   }
@@ -108,11 +109,16 @@ searchEl.addEventListener("keydown", (e) => {
   }
 });
 document.getElementById("clear").addEventListener("click", async () => {
-  items = [];
-  await saveStore();
-  render();
+  try { await changeStore({ type: "clear" }); }
+  catch (e) { document.getElementById("hint").textContent = String(e); }
 });
 
+chrome.storage.onChanged.addListener((changes, area) => {
+  if (area === "local" && changes.magazine) void loadStore().then(() => {
+    countEl.textContent = `${items.length} / ${CAPACITY}`;
+    render();
+  }).catch(e => { document.getElementById("hint").textContent = String(e); });
+});
 document.getElementById("read").addEventListener("click", () => void harvestClipboard());
 
 // ─── Start ────────────────────────────────────────────────────────────────
@@ -122,4 +128,4 @@ document.getElementById("read").addEventListener("click", () => void harvestClip
   render();
   searchEl.focus();
 
-})();
+})().catch(e => { document.getElementById("hint").textContent = String(e); });
