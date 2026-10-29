@@ -76,7 +76,10 @@ fn paste_item_internal(app: &AppHandle, item: &ClipItem) -> Result<(), String> {
     state::announce_self_write(app, item.fingerprint);
     let result = write_to_clipboard(&item.payload).and_then(|_| {
         std::thread::sleep(Duration::from_millis(CLIPBOARD_SETTLE_MS));
-        send_paste_keystroke()
+        send_paste_keystroke()?;
+        // Das Zielfenster muss das Clipboard lesen können, bevor der nächste Paste es ersetzt.
+        std::thread::sleep(Duration::from_millis(140));
+        Ok(())
     });
     let state = app.state::<state::AppState>();
     if result.is_err() {
