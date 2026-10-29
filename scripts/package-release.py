@@ -53,7 +53,9 @@ def main():
         assert z.testzip() is None
         assert 'Web-App/manual.html' in z.namelist()
     checksums = OUT / f'copyNpaste-{VERSION}-SHA256.txt'
-    checksums.write_text(''.join(f'{hashlib.sha256(p.read_bytes()).hexdigest()}  {p.name}\n' for p in [*extensions, source, complete]), encoding='utf-8')
+    downloads = [*extensions, source, complete, *(p for p in native.rglob('*') if p.is_file())]
+    assert len({p.name for p in downloads}) == len(downloads), 'Doppelte Downloadnamen'
+    checksums.write_text(''.join(f'{hashlib.sha256(p.read_bytes()).hexdigest()}  {p.name}\n' for p in downloads), encoding='utf-8')
     print(complete)
 
 
